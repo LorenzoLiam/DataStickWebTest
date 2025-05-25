@@ -11,6 +11,16 @@
         .fail { background-color: #f8d7da; color: red; }
         #statusText { margin-top: 10px; font-weight: bold; }
         #startTestBtn:disabled { background-color: #ccc; cursor: not-allowed; }
+        #logBox, #rawBox {
+            margin-top: 20px;
+            padding: 10px;
+            border: 1px solid #ccc;
+            height: 120px;
+            overflow-y: auto;
+            background: #f9f9f9;
+            font-family: monospace;
+            white-space: pre-wrap;
+        }
     </style>
 </head>
 <body>
@@ -30,6 +40,9 @@
     <div id="statusText"></div>
 </div>
 
+<div id="logBox">测试日志将显示在这里...</div>
+<div id="rawBox">原始串口数据将显示在这里...</div>
+
 <table>
     <thead>
         <tr>
@@ -46,12 +59,14 @@ let reader, writer;
 let isTesting = false;
 const hexCommand = '0101020001783C';
 const recDataTimeout = 20;
-const testTimeout = 10000; // 串口响应超时时间（ms）
-const snOffset = [0, 8]; // HEX 字符串中 SN 的起始和结束位置
+const testTimeout = 10000;
+const retryDelay = testTimeout / 2;
+const snOffset = [0, 8];
 const imeiOffset = [8, 12];
 const simCardOffset = [12, 18];
 let buffer = new Uint8Array();
 let bufferTimer;
+let retryTimer, timeoutTimer;
 
 function appendResult(data) {
     const tbody = document.getElementById("resultTableBody");
@@ -66,6 +81,13 @@ function appendResult(data) {
         <td class="${data.status === '通过' ? 'pass' : 'fail'}">${data.status}</td>
     `;
     tbody.prepend(tr);
+    scrollLog('logBox', `📝 [结果] ${JSON.stringify(data)}`);
+}
+
+function scrollLog(id, text) {
+    const box = document.getElementById(id);
+    box.textContent += `\n${text}`;
+    box.scrollTop = box.scrollHeight;
 }
 
 document.getElementById('requestPortBtn').onclick = async () => {
@@ -88,20 +110,23 @@ document.getElementById('startTestBtn').onclick = async () => {
     try {
         await port.open({ baudRate });
         writer = port.writable.getWriter();
-
-        const command = hexToUint8Array(hexCommand);
-        await writer.write(command);
-        writer.releaseLock();
-
-        document.getElementById('statusText').innerText = '⏳ 等待设备响应...';
-
         reader = port.readable.getReader();
+
+        sendCommand();
         readLoop();
 
-        setTimeout(() => {
+        retryTimer = setTimeout(() => {
+            if (isTesting) {
+                scrollLog('logBox', '⏳ 半程未响应，重发指令');
+                sendCommand();
+            }
+        }, retryDelay);
+
+        timeoutTimer = setTimeout(() => {
             if (isTesting) {
                 cleanup();
                 document.getElementById('statusText').innerText = '⏰ 超时未响应';
+                scrollLog('logBox', '⛔ 测试超时');
             }
         }, testTimeout);
 
@@ -111,6 +136,12 @@ document.getElementById('startTestBtn').onclick = async () => {
     }
 };
 
+function sendCommand() {
+    const command = hexToUint8Array(hexCommand);
+    writer.write(command);
+    scrollLog('logBox', `📤 已发送指令: ${hexCommand}`);
+}
+
 function hexToUint8Array(hex) {
     return new Uint8Array(hex.match(/.{1,2}/g).map(b => parseInt(b, 16)));
 }
@@ -119,6 +150,7 @@ function readLoop() {
     reader.read().then(({ value, done }) => {
         if (done || !value) return;
         buffer = concatBuffer(buffer, value);
+        scrollLog('rawBox', [...value].map(b => b.toString(16).padStart(2, '0')).join(' '));
 
         if (bufferTimer) clearTimeout(bufferTimer);
         bufferTimer = setTimeout(() => {
@@ -138,15 +170,20 @@ function concatBuffer(a, b) {
 }
 
 function handleReceivedData(buffer) {
+    clearTimeout(retryTimer);
+    clearTimeout(timeoutTimer);
+
     let sn = null, imei = null, simCard = null;
     let serialOk = false;
 
     try {
         const text = new TextDecoder().decode(buffer).trim();
+        scrollLog('logBox', `📥 ASCII 尝试: ${text}`);
         const hexPattern = /^[0-9A-Fa-f\s]+$/;
         if (hexPattern.test(text.replace(/[^0-9A-Fa-f\s]/g, ''))) {
             const hexString = text.replace(/\s+/g, '');
             const utf8 = new TextDecoder().decode(hexToUint8Array(hexString));
+            scrollLog('logBox', `🔍 解码后 JSON 尝试: ${utf8}`);
             try {
                 const json = JSON.parse(utf8);
                 sn = json.sn || json.SN || null;
@@ -161,6 +198,7 @@ function handleReceivedData(buffer) {
         }
     } catch {
         const hex = [...buffer].map(b => b.toString(16).padStart(2, '0')).join('');
+        scrollLog('logBox', `📦 使用 HEX 解析: ${hex}`);
         sn = hex.slice(...snOffset).toUpperCase();
         imei = hex.slice(...imeiOffset);
         simCard = hex.slice(...simCardOffset);
@@ -202,6 +240,8 @@ function cleanup() {
     reader?.cancel().catch(() => {});
     port?.close().catch(() => {});
     document.getElementById('startTestBtn').disabled = false;
+    clearTimeout(retryTimer);
+    clearTimeout(timeoutTimer);
 }
 </script>
 </body>
