@@ -5,13 +5,23 @@
     <title>数据棒测试 - Web Serial 版</title>
     <style>
         body { font-family: Arial; padding: 20px; }
-        table { border-collapse: collapse; width: 100%; margin-top: 20px; }
+        table { border-collapse: collapse; width: 100%; margin-top: 0; }
         th, td { border: 1px solid #ddd; padding: 8px; text-align: center; }
         .pass { background-color: #d4edda; color: green; }
         .fail { background-color: #f8d7da; color: red; }
         #statusText { margin-top: 10px; font-weight: bold; }
         #startTestBtn:disabled { background-color: #ccc; cursor: not-allowed; }
-        #logBox, #rawBox {
+        #logContainer {
+            margin-top: 20px;
+            border: 1px solid #ccc;
+            background: #f9f9f9;
+            font-family: monospace;
+            white-space: pre-wrap;
+            max-height: 200px;
+            overflow-y: auto;
+            padding: 10px;
+        }
+        #rawBox {
             margin-top: 20px;
             padding: 10px;
             border: 1px solid #ccc;
@@ -20,6 +30,19 @@
             background: #f9f9f9;
             font-family: monospace;
             white-space: pre-wrap;
+        }
+        #resultTableHeader {
+            margin-top: 20px;
+            border-collapse: collapse;
+            width: 100%;
+            font-family: Arial, sans-serif;
+            border: 1px solid #ddd;
+        }
+        #resultTableHeader th {
+            border: 1px solid #ddd;
+            padding: 8px;
+            text-align: center;
+            background-color: #f0f0f0;
         }
     </style>
 </head>
@@ -40,20 +63,29 @@
     <div id="statusText"></div>
 </div>
 
-<div id="logBox">测试日志将显示在这里...</div>
-<div id="rawBox">原始串口数据将显示在这里...</div>
-
-<table>
+<!-- 先放表头 -->
+<table id="resultTableHeader">
     <thead>
         <tr>
             <th>时间</th><th>SN</th><th>IMEI</th><th>ICCID</th>
             <th>串口通信</th><th>网页访问</th><th>测试结果</th>
         </tr>
     </thead>
+</table>
+
+<!-- 日志显示框 -->
+<div id="logContainer">测试日志将显示在这里...</div>
+<div id="rawBox">原始串口数据将显示在这里...</div>
+
+<!-- 结果表格主体隐藏，内容仍由JS插入 -->
+<table style="display:none;">
     <tbody id="resultTableBody"></tbody>
 </table>
 
 <script>
+// 这里保持你原先的js代码不变
+// 注意：appendResult函数中 tbody 是隐藏的，我们可以改成将结果打印到logContainer，或者另做处理
+
 let port = null;
 let reader, writer;
 let isTesting = false;
@@ -69,21 +101,17 @@ let bufferTimer;
 let retryTimer, timeoutTimer;
 
 function appendResult(data) {
-    const tbody = document.getElementById("resultTableBody");
-    const tr = document.createElement("tr");
-    tr.innerHTML = `
-        <td>${new Date(data.timestamp).toLocaleString()}</td>
-        <td>${data.sn || '-'}</td>
-        <td>${data.imei || '-'}</td>
-        <td>${data.simCard || '-'}</td>
-        <td class="${data.serialOk ? 'pass' : 'fail'}">${data.serialOk ? '正常' : '异常'}</td>
-        <td class="${data.webOk ? 'pass' : 'fail'}">${data.webOk ? '正常' : '异常'}</td>
-        <td class="${data.status === '通过' ? 'pass' : 'fail'}">${data.status}</td>
-    `;
-    tbody.prepend(tr);
+    // 这里改成在logContainer里追加表格式内容
+    const container = document.getElementById("logContainer");
+    // 创建一行表格形式的字符串（用制表符对齐）
+    // 为了对齐，最好用表格显示，但logContainer是div，故用纯文本模拟：
+    const row = `${new Date(data.timestamp).toLocaleString()}\t${data.sn || '-'}\t${data.imei || '-'}\t${data.simCard || '-'}\t${data.serialOk ? '正常' : '异常'}\t${data.webOk ? '正常' : '异常'}\t${data.status}`;
+    container.textContent += `\n${row}`;
+    container.scrollTop = container.scrollHeight;
     scrollLog('logBox', `📝 [结果] ${JSON.stringify(data)}`);
 }
 
+// 你之前的scrollLog函数里用的是logBox，我们把logBox改成logContainer
 function scrollLog(id, text) {
     const box = document.getElementById(id);
     box.textContent += `\n${text}`;
@@ -117,7 +145,7 @@ document.getElementById('startTestBtn').onclick = async () => {
 
         retryTimer = setTimeout(() => {
             if (isTesting) {
-                scrollLog('logBox', '⏳ 半程未响应，重发指令');
+                scrollLog('logContainer', '⏳ 半程未响应，重发指令');
                 sendCommand();
             }
         }, retryDelay);
@@ -126,7 +154,7 @@ document.getElementById('startTestBtn').onclick = async () => {
             if (isTesting) {
                 cleanup();
                 document.getElementById('statusText').innerText = '⏰ 超时未响应';
-                scrollLog('logBox', '⛔ 测试超时');
+                scrollLog('logContainer', '⛔ 测试超时');
             }
         }, testTimeout);
 
@@ -139,7 +167,7 @@ document.getElementById('startTestBtn').onclick = async () => {
 function sendCommand() {
     const command = hexToUint8Array(hexCommand);
     writer.write(command);
-    scrollLog('logBox', `📤 已发送指令: ${hexCommand}`);
+    scrollLog('logContainer', `📤 已发送指令: ${hexCommand}`);
 }
 
 function hexToUint8Array(hex) {
@@ -178,12 +206,12 @@ function handleReceivedData(buffer) {
 
     try {
         const text = new TextDecoder().decode(buffer).trim();
-        scrollLog('logBox', `📥 ASCII 尝试: ${text}`);
+        scrollLog('logContainer', `📥 ASCII 尝试: ${text}`);
         const hexPattern = /^[0-9A-Fa-f\s]+$/;
         if (hexPattern.test(text.replace(/[^0-9A-Fa-f\s]/g, ''))) {
             const hexString = text.replace(/\s+/g, '');
             const utf8 = new TextDecoder().decode(hexToUint8Array(hexString));
-            scrollLog('logBox', `🔍 解码后 JSON 尝试: ${utf8}`);
+            scrollLog('logContainer', `🔍 解码后 JSON 尝试: ${utf8}`);
             try {
                 const json = JSON.parse(utf8);
                 sn = json.sn || json.SN || null;
@@ -198,7 +226,7 @@ function handleReceivedData(buffer) {
         }
     } catch {
         const hex = [...buffer].map(b => b.toString(16).padStart(2, '0')).join('');
-        scrollLog('logBox', `📦 使用 HEX 解析: ${hex}`);
+        scrollLog('logContainer', `📦 使用 HEX 解析: ${hex}`);
         sn = hex.slice(...snOffset).toUpperCase();
         imei = hex.slice(...imeiOffset);
         simCard = hex.slice(...simCardOffset);
