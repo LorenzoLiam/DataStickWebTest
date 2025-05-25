@@ -46,6 +46,10 @@ let reader, writer;
 let isTesting = false;
 const hexCommand = '0101020001783C';
 const recDataTimeout = 20;
+const testTimeout = 10000; // 串口响应超时时间（ms）
+const snOffset = [0, 8]; // HEX 字符串中 SN 的起始和结束位置
+const imeiOffset = [8, 12];
+const simCardOffset = [12, 18];
 let buffer = new Uint8Array();
 let bufferTimer;
 
@@ -94,13 +98,12 @@ document.getElementById('startTestBtn').onclick = async () => {
         reader = port.readable.getReader();
         readLoop();
 
-        // 设置超时器（10秒）
         setTimeout(() => {
             if (isTesting) {
                 cleanup();
                 document.getElementById('statusText').innerText = '⏰ 超时未响应';
             }
-        }, 10000);
+        }, testTimeout);
 
     } catch (err) {
         document.getElementById('statusText').innerText = '❌ 串口打开失败';
@@ -119,8 +122,7 @@ function readLoop() {
 
         if (bufferTimer) clearTimeout(bufferTimer);
         bufferTimer = setTimeout(() => {
-            const hex = [...buffer].map(b => b.toString(16).padStart(2, '0')).join('');
-            handleReceivedData(hex);
+            handleReceivedData(buffer);
             buffer = new Uint8Array();
         }, recDataTimeout);
 
@@ -135,12 +137,36 @@ function concatBuffer(a, b) {
     return c;
 }
 
-function handleReceivedData(hex) {
-    const sn = hex.slice(0, 8).toUpperCase();
-    const imei = hex.slice(8, 12);
-    const simCard = hex.slice(12, 18);
-    const serialOk = !!sn;
+function handleReceivedData(buffer) {
+    let sn = null, imei = null, simCard = null;
+    let serialOk = false;
 
+    try {
+        const text = new TextDecoder().decode(buffer).trim();
+        const hexPattern = /^[0-9A-Fa-f\s]+$/;
+        if (hexPattern.test(text.replace(/[^0-9A-Fa-f\s]/g, ''))) {
+            const hexString = text.replace(/\s+/g, '');
+            const utf8 = new TextDecoder().decode(hexToUint8Array(hexString));
+            try {
+                const json = JSON.parse(utf8);
+                sn = json.sn || json.SN || null;
+                imei = json.imei || json.IMEI || null;
+                simCard = json.sim || json.SIM || null;
+            } catch {}
+        } else {
+            const json = JSON.parse(text);
+            sn = json.sn || json.SN || null;
+            imei = json.imei || json.IMEI || null;
+            simCard = json.sim || json.SIM || null;
+        }
+    } catch {
+        const hex = [...buffer].map(b => b.toString(16).padStart(2, '0')).join('');
+        sn = hex.slice(...snOffset).toUpperCase();
+        imei = hex.slice(...imeiOffset);
+        simCard = hex.slice(...simCardOffset);
+    }
+
+    serialOk = !!(sn || imei || simCard);
     document.getElementById('statusText').innerText = '🔗 正在测试网页连接...';
 
     fetch("http://gw.3wlink.cn:22011/main?dgwkey=jC8ahOYi4PlPDbtntUQ1wfnzesCSrLalKCRrRcPUujQ", { method: 'GET' })
