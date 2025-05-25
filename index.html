@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <title>数据棒测试 - Web Serial 版</title>
+    <style>
+        body { font-family: Arial; padding: 20px; }
+        table { border-collapse: collapse; width: 100%; margin-top: 20px; }
+        th, td { border: 1px solid #ddd; padding: 8px; text-align: center; }
+        .pass { background-color: #d4edda; color: green; }
+        .fail { background-color: #f8d7da; color: red; }
+        #statusText { margin-top: 10px; font-weight: bold; }
+        #startTestBtn:disabled { background-color: #ccc; cursor: not-allowed; }
+    </style>
+</head>
+<body>
+<h1>数据棒测试 - Web Serial</h1>
+
+<div>
+    <button id="requestPortBtn">选择串口</button>
+    <label>波特率：</label>
+    <select id="baudRateSelect">
+        <option value="9600">9600</option>
+        <option value="115200">115200</option>
+        <option value="57600">57600</option>
+        <option value="38400">38400</option>
+        <option value="19200">19200</option>
+    </select>
+    <button id="startTestBtn" disabled>开始检测</button>
+    <div id="statusText"></div>
+</div>
+
+<table>
+    <thead>
+        <tr>
+            <th>时间</th><th>SN</th><th>IMEI</th><th>ICCID</th>
+            <th>串口通信</th><th>网页访问</th><th>测试结果</th>
+        </tr>
+    </thead>
+    <tbody id="resultTableBody"></tbody>
+</table>
+
+<script>
+let port = null;
+let reader, writer;
+let isTesting = false;
+const hexCommand = '0101020001783C';
+const recDataTimeout = 20;
+let buffer = new Uint8Array();
+let bufferTimer;
+
+function appendResult(data) {
+    const tbody = document.getElementById("resultTableBody");
+    const tr = document.createElement("tr");
+    tr.innerHTML = `
+        <td>${new Date(data.timestamp).toLocaleString()}</td>
+        <td>${data.sn || '-'}</td>
+        <td>${data.imei || '-'}</td>
+        <td>${data.simCard || '-'}</td>
+        <td class="${data.serialOk ? 'pass' : 'fail'}">${data.serialOk ? '正常' : '异常'}</td>
+        <td class="${data.webOk ? 'pass' : 'fail'}">${data.webOk ? '正常' : '异常'}</td>
+        <td class="${data.status === '通过' ? 'pass' : 'fail'}">${data.status}</td>
+    `;
+    tbody.prepend(tr);
+}
+
+document.getElementById('requestPortBtn').onclick = async () => {
+    try {
+        port = await navigator.serial.requestPort();
+        document.getElementById('statusText').innerText = '✅ 串口已选择';
+        document.getElementById('startTestBtn').disabled = false;
+    } catch (err) {
+        document.getElementById('statusText').innerText = '❌ 串口选择失败';
+    }
+};
+
+document.getElementById('startTestBtn').onclick = async () => {
+    if (!port || isTesting) return;
+
+    const baudRate = parseInt(document.getElementById('baudRateSelect').value);
+    document.getElementById('statusText').innerText = '⏳ 正在打开串口...';
+    isTesting = true;
+
+    try {
+        await port.open({ baudRate });
+        writer = port.writable.getWriter();
+
+        const command = hexToUint8Array(hexCommand);
+        await writer.write(command);
+        writer.releaseLock();
+
+        document.getElementById('statusText').innerText = '⏳ 等待设备响应...';
+
+        reader = port.readable.getReader();
+        readLoop();
+
+        // 设置超时器（10秒）
+        setTimeout(() => {
+            if (isTesting) {
+                cleanup();
+                document.getElementById('statusText').innerText = '⏰ 超时未响应';
+            }
+        }, 10000);
+
+    } catch (err) {
+        document.getElementById('statusText').innerText = '❌ 串口打开失败';
+        isTesting = false;
+    }
+};
+
+function hexToUint8Array(hex) {
+    return new Uint8Array(hex.match(/.{1,2}/g).map(b => parseInt(b, 16)));
+}
+
+function readLoop() {
+    reader.read().then(({ value, done }) => {
+        if (done || !value) return;
+        buffer = concatBuffer(buffer, value);
+
+        if (bufferTimer) clearTimeout(bufferTimer);
+        bufferTimer = setTimeout(() => {
+            const hex = [...buffer].map(b => b.toString(16).padStart(2, '0')).join('');
+            handleReceivedData(hex);
+            buffer = new Uint8Array();
+        }, recDataTimeout);
+
+        if (isTesting) readLoop();
+    });
+}
+
+function concatBuffer(a, b) {
+    let c = new Uint8Array(a.length + b.length);
+    c.set(a, 0);
+    c.set(b, a.length);
+    return c;
+}
+
+function handleReceivedData(hex) {
+    const sn = hex.slice(0, 8).toUpperCase();
+    const imei = hex.slice(8, 12);
+    const simCard = hex.slice(12, 18);
+    const serialOk = !!sn;
+
+    document.getElementById('statusText').innerText = '🔗 正在测试网页连接...';
+
+    fetch("http://gw.3wlink.cn:22011/main?dgwkey=jC8ahOYi4PlPDbtntUQ1wfnzesCSrLalKCRrRcPUujQ", { method: 'GET' })
+        .then(res => {
+            const webOk = res.status === 200;
+            const result = {
+                sn, imei, simCard,
+                serialOk,
+                webOk,
+                status: (serialOk && webOk) ? '通过' : '不通过',
+                timestamp: Date.now()
+            };
+            appendResult(result);
+            document.getElementById('statusText').innerText = `✅ 测试完成，结果：${result.status}`;
+            cleanup();
+        })
+        .catch(() => {
+            const result = {
+                sn, imei, simCard,
+                serialOk,
+                webOk: false,
+                status: '不通过',
+                timestamp: Date.now()
+            };
+            appendResult(result);
+            document.getElementById('statusText').innerText = '❌ 网页连接失败';
+            cleanup();
+        });
+}
+
+function cleanup() {
+    isTesting = false;
+    reader?.cancel().catch(() => {});
+    port?.close().catch(() => {});
+    document.getElementById('startTestBtn').disabled = false;
+}
+</script>
+</body>
+</html>
