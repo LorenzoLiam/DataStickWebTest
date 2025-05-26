@@ -97,7 +97,7 @@ const testWebConnection = async (url) => {
         const proxyUrls = [
             `https://api.allorigins.win/get?url=${encodeURIComponent(url)}`,
             `https://cors-anywhere.herokuapp.com/${url}`,
-            `https://thingproxy.freeboard.io/fetch/${url}`
+            //`https://thingproxy.freeboard.io/fetch/${url}`
         ];
         
         for (const proxyUrl of proxyUrls) {
