@@ -251,7 +251,7 @@ const handleReceivedData = (buf) => {
     serialOk = Boolean(sn || imei || simCard);
     updateStatus(`🔗 正在测试网页连接...`);
 
-    testWebConnection("http://gw.3wlink.cn:22011/main?dgwkey=jC8ahOYi4PlPDbtntUQ1wfnzesCSrLalKCRrRcPUujQ")
+    testWebConnection("https://www.bing.com")
         .then(webOk => finalizeResult({ sn, imei, simCard, serialOk, webOk }))
         .catch(() => finalizeResult({ sn, imei, simCard, serialOk, webOk: false }));
 };
