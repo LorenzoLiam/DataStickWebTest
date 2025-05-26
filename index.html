@@ -1,42 +1,42 @@
 <!DOCTYPE html>
 <html lang="zh">
 <head>
-    <meta charset="UTF-8">
-    <title>数据棒测试</title>
-    <style>
-        body { font-family: Arial; padding: 20px; }
-        button, select { margin-right: 10px; }
-        table { border-collapse: collapse; width: 100%; margin-top: 20px; }
-        th, td { border: 1px solid #ddd; padding: 8px; text-align: center; }
-        .pass { background-color: #d4edda; color: green; }
-        .fail { background-color: #f8d7da; color: red; }
-        #statusText { margin-top: 10px; font-weight: bold; }
-        #resultContainer { max-height: 240px; overflow-y: auto; margin-top: 20px; border: 1px solid #ccc; }
-        #logBox { margin-top: 20px; padding: 10px; border: 1px solid #ccc; height: 160px; overflow-y: auto; background: #f9f9f9; font-family: monospace; white-space: pre-wrap; }
-    </style>
+  <meta charset="UTF-8">
+  <title>数据棒测试</title>
+  <style>
+    body { font-family: Arial; padding: 20px; }
+    button, select { margin-right: 10px; }
+    table { border-collapse: collapse; width: 100%; margin-top: 20px; }
+    th, td { border: 1px solid #ddd; padding: 8px; text-align: center; }
+    .pass { background-color: #d4edda; color: green; }
+    .fail { background-color: #f8d7da; color: red; }
+    #statusText { margin-top: 10px; font-weight: bold; }
+    #resultContainer { max-height: 240px; overflow-y: auto; margin-top: 20px; border: 1px solid #ccc; }
+    #logBox { margin-top: 20px; padding: 10px; border: 1px solid #ccc; height: 160px; overflow-y: auto; background: #f9f9f9; font-family: monospace; white-space: pre-wrap; }
+  </style>
 </head>
 <body>
 <h1>数据棒测试</h1>
 <div>
-    <button id="requestPortBtn">选择串口</button>
-    <label>波特率：</label>
-    <select id="baudRateSelect">
-        <option value="9600">9600</option>
-        <option value="115200" selected>115200</option>
-        <option value="57600">57600</option>
-        <option value="38400">38400</option>
-        <option value="19200">19200</option>
-    </select>
-    <button id="startTestBtn" disabled>开始检测</button>
-    <div id="statusText"></div>
+  <button id="requestPortBtn">选择串口</button>
+  <label>波特率：</label>
+  <select id="baudRateSelect">
+    <option value="9600">9600</option>
+    <option value="115200" selected>115200</option>
+    <option value="57600">57600</option>
+    <option value="38400">38400</option>
+    <option value="19200">19200</option>
+  </select>
+  <button id="startTestBtn" disabled>开始检测</button>
+  <div id="statusText"></div>
 </div>
 <div id="resultContainer">
-    <table>
-        <thead>
-            <tr><th>时间</th><th>SN</th><th>IMEI</th><th>ICCID</th><th>串口通信</th><th>网页访问</th><th>测试结果</th></tr>
-        </thead>
-        <tbody id="resultTableBody"></tbody>
-    </table>
+  <table>
+    <thead>
+    <tr><th>时间</th><th>SN</th><th>IMEI</th><th>ICCID</th><th>串口通信</th><th>网页访问</th><th>测试结果</th></tr>
+    </thead>
+    <tbody id="resultTableBody"></tbody>
+  </table>
 </div>
 <div id="logBox">测试日志与串口原始数据将显示在这里...</div>
 <script>
@@ -45,159 +45,166 @@ let isTesting = false, buffer = new Uint8Array();
 let bufferTimer = null, retryTimer = null, timeoutTimer = null;
 const hexCommand = '0101020001783C';
 const recDataTimeout = 30, testTimeout = 15000, retryDelay = testTimeout / 2;
-const snOffset = [0, 4], imeiOffset = [4, 6], simCardOffset = [6, 9];
+const snOffset = [0, 8], imeiOffset = [8, 12], simCardOffset = [12, 18];
 
 const log = (text) => {
-    const box = document.getElementById('logBox');
-    box.textContent += `\n${text}`;
-    box.scrollTop = box.scrollHeight;
+  const box = document.getElementById('logBox');
+  box.textContent += `\n${text}`;
+  box.scrollTop = box.scrollHeight;
 };
 
 const updateStatus = (text) => document.getElementById('statusText').innerText = text;
 
 const appendResult = ({ sn, imei, simCard, serialOk, webOk, status, timestamp }) => {
-    const row = `<tr><td>${new Date(timestamp).toLocaleString()}</td><td>${sn || '-'}</td><td>${imei || '-'}</td><td>${simCard || '-'}</td>
-        <td class="${serialOk ? 'pass' : 'fail'}">${serialOk ? '正常' : '异常'}</td>
-        <td class="${webOk ? 'pass' : 'fail'}">${webOk ? '正常' : '异常'}</td>
-        <td class="${status === '通过' ? 'pass' : 'fail'}">${status}</td></tr>`;
-    document.getElementById("resultTableBody").insertAdjacentHTML('afterbegin', row);
-    log(`📝 [结果] ${JSON.stringify({ sn, imei, simCard, serialOk, webOk, status })}`);
+  const row = `<tr><td>${new Date(timestamp).toLocaleString()}</td><td>${sn || '-'}</td><td>${imei || '-'}</td><td>${simCard || '-'}</td>
+    <td class="${serialOk ? 'pass' : 'fail'}">${serialOk ? '正常' : '异常'}</td>
+    <td class="${webOk ? 'pass' : 'fail'}">${webOk ? '正常' : '异常'}</td>
+    <td class="${status === '通过' ? 'pass' : 'fail'}">${status}</td></tr>`;
+  document.getElementById("resultTableBody").insertAdjacentHTML('afterbegin', row);
+  log(`📝 [结果] ${JSON.stringify({ sn, imei, simCard, serialOk, webOk, status })}`);
 };
 
 document.getElementById('requestPortBtn').onclick = async () => {
-    try {
-        port = await navigator.serial.requestPort();
-        updateStatus('✅ 串口已选择');
-        document.getElementById('startTestBtn').disabled = false;
-    } catch {
-        updateStatus('❌ 串口选择失败');
-    }
+  try {
+    port = await navigator.serial.requestPort();
+    updateStatus('✅ 串口已选择');
+    document.getElementById('startTestBtn').disabled = false;
+  } catch {
+    updateStatus('❌ 串口选择失败');
+  }
 };
 
 document.getElementById('startTestBtn').onclick = async () => {
-    if (!port || isTesting) return;
-    const baudRate = parseInt(document.getElementById('baudRateSelect').value);
-    updateStatus('⏳ 正在打开串口...');
-    isTesting = true;
+  if (!port || isTesting) return;
+  const baudRate = parseInt(document.getElementById('baudRateSelect').value);
+  updateStatus('⏳ 正在打开串口...');
+  isTesting = true;
 
-    try {
-        await port.open({ baudRate });
-        writer = port.writable.getWriter();
-        reader = port.readable.getReader();
-        sendCommand();
-        readLoop();
-
-        retryTimer = setTimeout(() => isTesting && (log('⏳ 半程未响应，重发指令'), sendCommand()), retryDelay);
-        timeoutTimer = setTimeout(() => isTesting && (updateStatus('⏰ 超时未响应'), log('⛔ 测试超时'), cleanup()), testTimeout);
-    } catch {
-        updateStatus('❌ 串口打开失败');
-        isTesting = false;
-    }
+  try {
+    await port.open({ baudRate });
+    writer = port.writable.getWriter();
+    reader = port.readable.getReader();
+    sendCommand();
+    readLoop();
+    retryTimer = setTimeout(() => isTesting && (log('⏳ 半程未响应，重发指令'), sendCommand()), retryDelay);
+    timeoutTimer = setTimeout(() => isTesting && (updateStatus('⏰ 超时未响应'), log('⛔ 测试超时'), cleanup()), testTimeout);
+  } catch {
+    updateStatus('❌ 串口打开失败');
+    isTesting = false;
+  }
 };
 
 const sendCommand = () => {
-    writer.write(hexToUint8Array(hexCommand));
-    log(`📤 已发送指令: ${hexCommand}`);
+  writer.write(hexToUint8Array(hexCommand));
+  log(`📤 已发送指令: ${hexCommand}`);
 };
 
 const hexToUint8Array = hex => new Uint8Array(hex.match(/.{1,2}/g).map(b => parseInt(b, 16)));
 
 const concatBuffer = (a, b) => new Uint8Array([...a, ...b]);
 
-// SSCOM 风格数据合包逻辑
 const readLoop = () => {
-    reader.read().then(({ value, done }) => {
-        if (done || !value) return;
-
-        buffer = concatBuffer(buffer, value);
-        log([...value].map(b => b.toString(16).padStart(2, '0')).join(' '));
-
-        if (bufferTimer) clearTimeout(bufferTimer);
-        bufferTimer = setTimeout(() => {
-            log(`🧩 超时合包完成，数据长度: ${buffer.length}`);
-            handleReceivedData(buffer);
-            buffer = new Uint8Array(); // 清空缓冲区
-        }, recDataTimeout);
-
-        if (isTesting) readLoop(); // 继续读取
-    }).catch(err => {
-        log(`❌ 串口读取异常: ${err}`);
-    });
+  reader.read().then(({ value, done }) => {
+    if (done || !value) return;
+    buffer = concatBuffer(buffer, value);
+    log([...value].map(b => b.toString(16).padStart(2, '0')).join(' '));
+    clearTimeout(bufferTimer);
+    bufferTimer = setTimeout(() => {
+      if (buffer.length < 10) return log('⚠️ 接收到的数据过短，忽略本次数据。'), buffer = new Uint8Array();
+      handleReceivedData(buffer);
+      buffer = new Uint8Array();
+    }, recDataTimeout);
+    if (isTesting) readLoop();
+  });
 };
 
 const handleReceivedData = (buf) => {
-    clearTimeout(retryTimer);
-    clearTimeout(timeoutTimer);
-    let sn = null, imei = null, simCard = null;
-    let serialOk = false;
+  clearTimeout(retryTimer);
+  clearTimeout(timeoutTimer);
+  let sn = null, imei = null, simCard = null;
+  let serialOk = false;
 
-    if (buf.length < 4) {
-        log('⚠️ 接收到的数据过短，跳过处理。');
-        return;
+  try {
+    const text = new TextDecoder().decode(buf).trim();
+    log(`📥 ASCII 尝试: ${text}`);
+    if (/^[0-9A-Fa-f\s]+$/.test(text.replace(/[^0-9A-Fa-f\s]/g, ''))) {
+      const utf8 = new TextDecoder().decode(hexToUint8Array(text.replace(/\s+/g, '')));
+      log(`🔍 解码后 JSON 尝试: ${utf8}`);
+      try {
+        const json = JSON.parse(utf8);
+        sn = json.sn || json.SN || null;
+        imei = json.imei || json.IMEI || null;
+        simCard = json.sim || json.SIM || null;
+      } catch {}
+    } else {
+      const json = JSON.parse(text);
+      sn = json.sn || json.SN || null;
+      imei = json.imei || json.IMEI || null;
+      simCard = json.sim || json.SIM || null;
     }
+  } catch {
+    const hex = [...buf].map(b => b.toString(16).padStart(2, '0')).join('');
+    log(`📦 使用 HEX 解析: ${hex}`);
+    sn = hex.slice(...snOffset).toUpperCase();
+    imei = hex.slice(...imeiOffset);
+    simCard = hex.slice(...simCardOffset);
+  }
 
-    try {
-        const text = new TextDecoder().decode(buf).trim();
-        log(`📥 ASCII 尝试: ${text}`);
-        if (/^[0-9A-Fa-f\s]+$/.test(text.replace(/[^0-9A-Fa-f\s]/g, ''))) {
-            const utf8 = new TextDecoder().decode(hexToUint8Array(text.replace(/\s+/g, '')));
-            log(`🔍 解码后 JSON 尝试: ${utf8}`);
-            try {
-                const json = JSON.parse(utf8);
-                sn = json.sn || json.SN || null;
-                imei = json.imei || json.IMEI || null;
-                simCard = json.sim || json.SIM || null;
-            } catch {}
-        } else {
-            const json = JSON.parse(text);
-            sn = json.sn || json.SN || null;
-            imei = json.imei || json.IMEI || null;
-            simCard = json.sim || json.SIM || null;
-        }
-    } catch {
-        const hex = [...buf].map(b => b.toString(16).padStart(2, '0')).join('');
-        log(`📦 使用 HEX 解析: ${hex}`);
-        sn = hex.slice(...snOffset).toUpperCase();
-        imei = hex.slice(...imeiOffset);
-        simCard = hex.slice(...simCardOffset);
-    }
+  serialOk = Boolean(sn || imei || simCard);
+  updateStatus('🔗 正在测试网页连接...');
 
-    serialOk = Boolean(sn || imei || simCard);
-    updateStatus('🔗 正在测试网页连接...');
-
-    fetch("http://gw.3wlink.cn:22011/main?dgwkey=jC8ahOYi4PlPDbtntUQ1wfnzesCSrLalKCRrRcPUujQ")
-        .then(res => finalizeResult({ sn, imei, simCard, serialOk, webOk: res.status === 200 }))
-        .catch(() => finalizeResult({ sn, imei, simCard, serialOk, webOk: false }));
+  fetch("http://gw.3wlink.cn:22011/main?dgwkey=jC8ahOYi4PlPDbtntUQ1wfnzesCSrLalKCRrRcPUujQ")
+    .then(res => finalizeResult({ sn, imei, simCard, serialOk, webOk: res.status === 200 }))
+    .catch(() => finalizeResult({ sn, imei, simCard, serialOk, webOk: false }));
 };
 
-const finalizeResult = ({ sn, imei, simCard, serialOk, webOk }) => {
-    const result = { sn, imei, simCard, serialOk, webOk, status: (serialOk && webOk) ? '通过' : '不通过', timestamp: Date.now() };
-    appendResult(result);
-    updateStatus(`✅ 测试完成，结果：${result.status}`);
-    cleanup();
+const finalizeResult = async ({ sn, imei, simCard, serialOk, webOk }) => {
+  const result = {
+    sn, imei, simCard, serialOk, webOk,
+    status: (serialOk && webOk) ? '通过' : '不通过',
+    timestamp: Date.now()
+  };
+  appendResult(result);
+  updateStatus(`✅ 测试完成，结果：${result.status}`);
+  await cleanup();
 };
 
-const cleanup = () => {
-    isTesting = false;
-    reader?.cancel().catch(() => {});
-    port?.close().catch(() => {});
-    document.getElementById('startTestBtn').disabled = false;
-    clearTimeout(retryTimer);
-    clearTimeout(timeoutTimer);
+const cleanup = async () => {
+  isTesting = false;
+  document.getElementById('startTestBtn').disabled = false;
+  try {
+    if (reader) {
+      await reader.cancel().catch(() => {});
+      reader.releaseLock();
+      reader = null;
+    }
+    if (writer) {
+      writer.releaseLock();
+      writer = null;
+    }
+    if (port) {
+      await port.close().catch(() => {});
+      port = null;
+    }
+  } catch (err) {
+    log(`❌ 释放串口资源出错: ${err}`);
+  }
+  clearTimeout(retryTimer);
+  clearTimeout(timeoutTimer);
 };
 
 const autoConnectUsbSerialPort = async () => {
-    const ports = await navigator.serial.getPorts();
-    for (const p of ports) {
-        const info = p.getInfo();
-        if (info.usbVendorId && info.usbProductId) {
-            port = p;
-            updateStatus('✅ 已自动连接 USB 串口');
-            document.getElementById('startTestBtn').disabled = false;
-            return;
-        }
+  const ports = await navigator.serial.getPorts();
+  for (const p of ports) {
+    const info = p.getInfo();
+    if (info.usbVendorId && info.usbProductId) {
+      port = p;
+      updateStatus('✅ 已自动连接 USB 串口');
+      document.getElementById('startTestBtn').disabled = false;
+      return;
     }
-    updateStatus('ℹ️ 未找到已授权的 USB 串口，请手动选择');
+  }
+  updateStatus('ℹ️ 未找到已授权的 USB 串口，请手动选择');
 };
 
 if ('serial' in navigator) autoConnectUsbSerialPort();
