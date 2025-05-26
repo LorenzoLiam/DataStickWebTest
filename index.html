@@ -263,7 +263,7 @@ const handleReceivedData = (buf) => {
         finalizeResult({ sn, imei, simCard, serialOk, webOk: false });
     } else {
         //const testUrl = `http://gw.3wlink.cn:22011/login?dgwkey=${encodeURIComponent(sn)}`;
-        const testUrl = `https://www.bing.com`;
+        const testUrl = `http://gw.3wlink.cn:22011/main?dgwkey=ZBsQU5uQoNWdK9x6xG58-o6tQmBaKYN0v9e3R0X37rY`;
         log(`🌐 测试网址: ${testUrl}`);
         testWebConnection(testUrl)
             .then(webOk => finalizeResult({ sn, imei, simCard, serialOk, webOk }))
