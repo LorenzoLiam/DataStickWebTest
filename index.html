@@ -188,21 +188,32 @@ const concatBuffer = (a, b) => new Uint8Array([...a, ...b]);
 
 const readLoop = () => {
     if (!isTesting || isProcessingData) return;
-    
+
     reader.read().then(({ value, done }) => {
         if (done || !value || isProcessingData) return;
 
         buffer = concatBuffer(buffer, value);
 
-        if (bufferTimer) clearTimeout(bufferTimer);
-        bufferTimer = setTimeout(() => {
-            if (!isProcessingData) {
-                isProcessingData = true;
-                updateButtonState();
-                handleReceivedData(buffer);
-                buffer = new Uint8Array();
-            }
-        }, recDataTimeout);
+        // 判断是否为 ASCII 模式，是否包含换行符
+        const text = new TextDecoder().decode(buffer);
+        if (text.includes('\n')) {
+            // ASCII 模式，以换行结尾，立即处理
+            isProcessingData = true;
+            updateButtonState();
+            handleReceivedData(buffer);
+            buffer = new Uint8Array();  // 清空缓冲
+        } else {
+            // HEX 模式，使用定时器合包
+            if (bufferTimer) clearTimeout(bufferTimer);
+            bufferTimer = setTimeout(() => {
+                if (!isProcessingData) {
+                    isProcessingData = true;
+                    updateButtonState();
+                    handleReceivedData(buffer);
+                    buffer = new Uint8Array();
+                }
+            }, recDataTimeout);
+        }
 
         if (isTesting && !isProcessingData) readLoop();
     }).catch(err => {
@@ -210,6 +221,7 @@ const readLoop = () => {
         cleanup();
     });
 };
+
 
 const handleReceivedData = (buf) => {
     clearTimeout(retryTimer);
