@@ -2,7 +2,7 @@
 <html lang="zh">
 <head>
     <meta charset="UTF-8">
-    <title>数据棒测试 - Web Serial 版</title>
+    <title>数据棒测试</title>
     <style>
         body { font-family: Arial; padding: 20px; }
         button, select { margin-right: 10px; margin-bottom: 10px; }
@@ -32,7 +32,7 @@
     </style>
 </head>
 <body>
-<h1>数据棒测试 - Web Serial</h1>
+<h1>数据棒测试</h1>
 
 <div>
     <button id="requestPortBtn">选择串口</button>
@@ -177,7 +177,7 @@ function readLoop() {
 
         if (bufferTimer) clearTimeout(bufferTimer);
         bufferTimer = setTimeout(() => {
-            if (buffer.length < 10) {
+            if (buffer.length < 8) {
                 scrollLog('logBox', '⚠️ 接收到的数据过短，忽略本次数据。');
                 buffer = new Uint8Array();
                 return;
