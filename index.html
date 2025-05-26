@@ -45,7 +45,7 @@ let isTesting = false, buffer = new Uint8Array();
 let bufferTimer = null, retryTimer = null, timeoutTimer = null;
 const hexCommand = '0101020001783C';
 const recDataTimeout = 30, testTimeout = 15000, retryDelay = testTimeout / 2;
-const snOffset = [0, 8], imeiOffset = [8, 12], simCardOffset = [12, 18];
+const snOffset = [0, 4], imeiOffset = [4, 6], simCardOffset = [6, 9];
 
 const log = (text) => {
     const box = document.getElementById('logBox');
