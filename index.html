@@ -104,18 +104,24 @@ const hexToUint8Array = hex => new Uint8Array(hex.match(/.{1,2}/g).map(b => pars
 
 const concatBuffer = (a, b) => new Uint8Array([...a, ...b]);
 
+// SSCOM 风格数据合包逻辑
 const readLoop = () => {
     reader.read().then(({ value, done }) => {
         if (done || !value) return;
+
         buffer = concatBuffer(buffer, value);
         log([...value].map(b => b.toString(16).padStart(2, '0')).join(' '));
-        clearTimeout(bufferTimer);
+
+        if (bufferTimer) clearTimeout(bufferTimer);
         bufferTimer = setTimeout(() => {
-            if (buffer.length < 10) return log('⚠️ 接收到的数据过短，忽略本次数据。'), buffer = new Uint8Array();
+            log(`🧩 超时合包完成，数据长度: ${buffer.length}`);
             handleReceivedData(buffer);
-            buffer = new Uint8Array();
+            buffer = new Uint8Array(); // 清空缓冲区
         }, recDataTimeout);
-        if (isTesting) readLoop();
+
+        if (isTesting) readLoop(); // 继续读取
+    }).catch(err => {
+        log(`❌ 串口读取异常: ${err}`);
     });
 };
 
@@ -124,6 +130,11 @@ const handleReceivedData = (buf) => {
     clearTimeout(timeoutTimer);
     let sn = null, imei = null, simCard = null;
     let serialOk = false;
+
+    if (buf.length < 4) {
+        log('⚠️ 接收到的数据过短，跳过处理。');
+        return;
+    }
 
     try {
         const text = new TextDecoder().decode(buf).trim();
