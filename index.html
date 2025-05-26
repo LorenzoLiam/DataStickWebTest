@@ -54,7 +54,7 @@ const recDataTimeout = 20;
 const testTimeout = 9600;
 const retryDelay = testTimeout / 2;
 
-const snOffset = [0, 3], imeiOffset = [3, 5], simCardOffset = [5, 8];
+const snOffset = [0, 4], imeiOffset = [4, 8], simCardOffset = [8, 16];
 
 const log = (text) => {
     const box = document.getElementById('logBox');
@@ -83,47 +83,40 @@ const updateButtonState = () => {
 // 测试网址连通性的函数
 const testWebConnection = async (url) => {
     try {
-        // 首先尝试直接访问
         const directResponse = await fetch(url, {
             method: 'GET',
             mode: 'cors',
             cache: 'no-cache'
         });
-        return directResponse.status === 200;
+        if (directResponse.ok) {
+            log(`✅ 直接访问成功`);
+            return true;
+        }
     } catch (error) {
         log(`❌ 直接访问失败: ${error.message}`);
-        
-        // 如果直接访问失败，尝试使用CORS代理
-        const proxyUrls = [
-            `https://api.allorigins.win/get?url=${encodeURIComponent(url)}`,
-            `https://cors-anywhere.herokuapp.com/${url}`,
-            //`https://thingproxy.freeboard.io/fetch/${url}`
-        ];
-        
-        for (const proxyUrl of proxyUrls) {
-            try {
-                //log(`🔄 尝试代理: ${proxyUrl.split('/')[2]}`);
-                const proxyResponse = await fetch(proxyUrl, {
-                    method: 'GET',
-                    headers: {
-                        'Origin': window.location.origin
-                    }
-                });
-                
-                if (proxyResponse.ok) {
-                    const data = await proxyResponse.text();
-                    log(`✅ 通过代理访问成功`);
-                    return true;
-                }
-            } catch (proxyError) {
-                log(`❌ 代理访问失败: ${proxyError.message}`);
-                continue;
-            }
-        }
-        
-        return false;
     }
+
+    // 尝试使用代理
+    const proxyUrls = [
+        `https://api.allorigins.win/get?url=${encodeURIComponent(url)}`,
+        `https://thingproxy.freeboard.io/fetch/${url}`
+        //`https://thingproxy.freeboard.io/fetch/${url}` 基本废了，如果有私有版本可加回来
+    ];
+
+    for (const proxyUrl of proxyUrls) {
+        try {
+            const proxyResponse = await fetch(proxyUrl);
+            if (proxyResponse.ok) {
+                log(`✅ 通过代理访问成功: ${new URL(proxyUrl).hostname}`);
+                return true;
+            }
+        } catch (proxyError) {
+            log(`❌ 代理 ${new URL(proxyUrl).hostname} 访问失败: ${proxyError.message}`);
+        }
+    }
+    return false;
 };
+
 
 document.getElementById('requestPortBtn').onclick = async () => {
     try {
@@ -264,10 +257,17 @@ const handleReceivedData = (buf) => {
 
     serialOk = Boolean(sn || imei || simCard);
     updateStatus(`🔗 正在测试网页连接...`);
-
-    testWebConnection("https://www.bing.com")
-        .then(webOk => finalizeResult({ sn, imei, simCard, serialOk, webOk }))
-        .catch(() => finalizeResult({ sn, imei, simCard, serialOk, webOk: false }));
+    if (!sn) {  
+        log(`⚠️ SN 为空，跳过网页测试`);
+        finalizeResult({ sn, imei, simCard, serialOk, webOk: false });
+    } else {
+        //const testUrl = `http://gw.3wlink.cn:22011/login?dgwkey=${encodeURIComponent(sn)}`;
+        const testUrl = `https://www.bing.com`;
+        log(`🌐 测试网址: ${testUrl}`);
+        testWebConnection(testUrl)
+            .then(webOk => finalizeResult({ sn, imei, simCard, serialOk, webOk }))
+            .catch(() => finalizeResult({ sn, imei, simCard, serialOk, webOk: false }));
+    }
 };
 
 const finalizeResult = ({ sn, imei, simCard, serialOk, webOk }) => {
