@@ -51,10 +51,10 @@ let isProcessingData = false;
 
 const hexCommand = '0101020001783C';
 const recDataTimeout = 20;
-const testTimeout = 9600;
+const testTimeout = 10000;
 const retryDelay = testTimeout / 2;
-
 const snOffset = [0, 4], imeiOffset = [4, 8], simCardOffset = [8, 16];
+
 
 const log = (text) => {
     const box = document.getElementById('logBox');
@@ -211,6 +211,7 @@ const readLoop = () => {
         if (isTesting && !isProcessingData) readLoop();
     }).catch(err => {
         log(`❌ 串口读取异常: ${err}`);
+        updateStatus('❌ 请重试');
         cleanup();
     });
 };
