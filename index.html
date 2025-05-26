@@ -170,6 +170,7 @@ document.getElementById('startTestBtn').onclick = async () => {
         updateStatus('❌ 串口打开失败');
         log(`❌ 错误: ${e}`);
         isTesting = false;
+         cleanup();
         updateButtonState();
     }
 };
@@ -206,6 +207,7 @@ const readLoop = () => {
         if (isTesting && !isProcessingData) readLoop();
     }).catch(err => {
         log(`❌ 串口读取异常: ${err}`);
+        cleanup();
     });
 };
 
