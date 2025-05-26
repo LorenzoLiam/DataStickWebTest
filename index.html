@@ -66,6 +66,8 @@
 let port = null;
 let reader = null, writer = null;
 let isTesting = false;
+let isReconnecting = false;
+
 const hexCommand = '0101020001783C';
 const recDataTimeout = 20;
 const testTimeout = 15000;
@@ -100,6 +102,11 @@ function appendResult(data) {
     scrollLog('logBox', `📝 [结果] ${JSON.stringify(data)}`);
 }
 
+function getPortKey(port) {
+    const info = port.getInfo();
+    return `${info.usbVendorId}:${info.usbProductId}`;
+}
+
 document.getElementById('requestPortBtn').onclick = async () => {
     try {
         port = await navigator.serial.requestPort();
@@ -127,6 +134,17 @@ document.getElementById('startTestBtn').onclick = async () => {
         await port.open({ baudRate });
         writer = port.writable.getWriter();
         reader = port.readable.getReader();
+
+        // 保存当前串口为最近一次使用的串口
+        localStorage.setItem('lastUsedPortKey', getPortKey(port));
+
+        // 添加 disconnect 事件监听
+        port.ondisconnect = () => {
+            console.log("串口已断开");
+            if (!isTesting) return;
+            scrollLog('logBox', '🔌 设备断开，尝试自动重连...');
+            reconnectPort();
+        };
 
         sendCommand();
         readLoop();
@@ -164,7 +182,23 @@ function hexToUint8Array(hex) {
 
 function readLoop() {
     reader.read().then(({ value, done }) => {
-        if (done || !value) return;
+        if (done || !value) {
+            if (isTesting) {
+                console.warn("读取结束（可能设备断开）");
+                scrollLog('logBox', '⚠️ 串口读取结束，可能设备已断开');
+                if (reader) {
+                    reader.releaseLock();
+                    reader = null;
+                }
+                if (writer) {
+                    writer.releaseLock();
+                    writer = null;
+                }
+                reconnectPort(); // 触发自动重连
+            }
+            return;
+        }
+
         buffer = concatBuffer(buffer, value);
         scrollLog('logBox', [...value].map(b => b.toString(16).padStart(2, '0')).join(' '));
 
@@ -182,8 +216,10 @@ function readLoop() {
         if (isTesting) readLoop();
     }).catch(err => {
         console.error('读取错误:', err);
-        cleanup();
-        document.getElementById('statusText').innerText = '❌ 串口读取失败';
+        if (isTesting) {
+            scrollLog('logBox', `🛑 读取错误: ${err.message}`);
+            reconnectPort();
+        }
     });
 }
 
@@ -232,8 +268,11 @@ function handleReceivedData(buffer) {
     serialOk = !!(sn || imei || simCard);
     document.getElementById('statusText').innerText = '🔗 正在测试网页连接...';
 
-    fetch("http://gw.3wlink.cn:22011/main?dgwkey=jC8ahOYi4PlPDbtntUQ1wfnzesCSrLalKCRrRcPUujQ", { method: 'GET' })
+    const testUrl = "http://gw.3wlink.cn:22011/main?dgwkey=jC8ahOYi4PlPDbtntUQ1wfnzesCSrLalKCRrRcPUujQ&_=" + Date.now();
+
+    fetch(testUrl, { method: 'GET' })
         .then(res => {
+            console.log('网页访问结果:', res);
             const webOk = res.status === 200;
             const result = {
                 sn, imei, simCard,
@@ -246,7 +285,8 @@ function handleReceivedData(buffer) {
             document.getElementById('statusText').innerText = `✅ 测试完成，结果：${result.status}`;
             cleanup();
         })
-        .catch(() => {
+        .catch(err => {
+            console.error('网页访问失败:', err);
             const result = {
                 sn, imei, simCard,
                 serialOk,
@@ -258,6 +298,84 @@ function handleReceivedData(buffer) {
             document.getElementById('statusText').innerText = '❌ 网页连接失败';
             cleanup();
         });
+}
+
+async function reconnectPort() {
+    if (isReconnecting || !isTesting) return;
+    isReconnecting = true;
+    document.getElementById('statusText').innerText = '🔄 正在尝试自动重连上次使用的串口...';
+
+    const lastPortKey = localStorage.getItem('lastUsedPortKey');
+
+    let attempts = 0;
+    const maxAttempts = 10;
+
+    while (attempts < maxAttempts && isTesting && !port?.readable) {
+        scrollLog('logBox', `🔁 第 ${attempts + 1} 次尝试重连`);
+
+        try {
+            const ports = await navigator.serial.getPorts();
+            for (const p of ports) {
+                const info = p.getInfo();
+                const portKey = `${info.usbVendorId}:${info.usbProductId}`;
+                if (portKey === lastPortKey) {
+                    port = p;
+                    await port.open({ baudRate: parseInt(document.getElementById('baudRateSelect').value) });
+                    writer = port.writable.getWriter();
+                    reader = port.readable.getReader();
+
+                    document.getElementById('statusText').innerText = '✅ 成功重连串口，继续测试中...';
+                    scrollLog('logBox', '🔗 串口已成功重连，继续发送指令');
+                    sendCommand();
+                    readLoop();
+                    isReconnecting = false;
+                    return;
+                }
+            }
+        } catch (e) {
+            console.error('重连失败:', e);
+        }
+
+        attempts++;
+        await new Promise(resolve => setTimeout(resolve, 1000)); // 每秒尝试一次
+    }
+
+    if (isTesting) {
+        document.getElementById('statusText').innerText = '❌ 自动重连失败，请重新插入设备或手动选择串口';
+        scrollLog('logBox', '🚫 自动重连失败');
+        cleanup();
+    }
+
+    isReconnecting = false;
+}
+
+async function autoConnectUsbSerialPort() {
+    try {
+        const ports = await navigator.serial.getPorts();
+        const lastPortKey = localStorage.getItem('lastUsedPortKey');
+
+        for (const p of ports) {
+            const info = p.getInfo();
+            if (!info.usbVendorId || !info.usbProductId) continue;
+
+            const portKey = `${info.usbVendorId}:${info.usbProductId}`;
+
+            if (portKey === lastPortKey) {
+                port = p;
+                document.getElementById('statusText').innerText = '✅ 已自动连接上次使用的 USB 串口';
+                document.getElementById('startTestBtn').disabled = false;
+                return;
+            }
+        }
+
+        document.getElementById('statusText').innerText = 'ℹ️ 未找到上次使用的串口，请手动选择';
+    } catch (e) {
+        console.error('自动连接失败:', e);
+    }
+}
+
+if ("serial" in navigator) {
+    autoConnectUsbSerialPort();
 }
 
 async function cleanup() {
@@ -291,28 +409,6 @@ async function cleanup() {
     clearTimeout(timeoutTimer);
 
     document.getElementById('startTestBtn').disabled = false;
-}
-
-async function autoConnectUsbSerialPort() {
-    try {
-        const ports = await navigator.serial.getPorts();
-        for (const p of ports) {
-            const info = p.getInfo();
-            if (info.usbVendorId && info.usbProductId) {
-                port = p;
-                document.getElementById('statusText').innerText = '✅ 已自动连接 USB 串口';
-                document.getElementById('startTestBtn').disabled = false;
-                return;
-            }
-        }
-        document.getElementById('statusText').innerText = 'ℹ️ 未找到已授权的 USB 串口，请手动选择';
-    } catch (e) {
-        console.error('自动连接失败:', e);
-    }
-}
-
-if ("serial" in navigator) {
-    autoConnectUsbSerialPort();
 }
 </script>
 </body>
