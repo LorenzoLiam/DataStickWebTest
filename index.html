@@ -5,7 +5,7 @@
     <title>数据棒测试 - Web Serial 版</title>
     <style>
         body { font-family: Arial; padding: 20px; }
-        button, select { margin-right: 10px; }
+        button, select { margin-right: 10px; margin-bottom: 10px; }
         table { border-collapse: collapse; width: 100%; margin-top: 20px; }
         th, td { border: 1px solid #ddd; padding: 8px; text-align: center; }
         .pass { background-color: #d4edda; color: green; }
@@ -13,7 +13,7 @@
         #statusText { margin-top: 10px; font-weight: bold; }
 
         #resultContainer {
-            max-height: 240px; /* 控制表格可见行数（约5条） */
+            max-height: 240px;
             overflow-y: auto;
             margin-top: 20px;
             border: 1px solid #ccc;
@@ -36,6 +36,7 @@
 
 <div>
     <button id="requestPortBtn">选择串口</button>
+    <button id="reconnectPortBtn">重新选择串口</button>
     <label>波特率：</label>
     <select id="baudRateSelect">
         <option value="9600">9600</option>
@@ -64,7 +65,7 @@
 
 <script>
 let port = null;
-let reader, writer;
+let reader = null, writer = null;
 let isTesting = false;
 const hexCommand = '0101020001783C';
 const recDataTimeout = 20;
@@ -105,13 +106,26 @@ document.getElementById('requestPortBtn').onclick = async () => {
         port = await navigator.serial.requestPort();
         document.getElementById('statusText').innerText = '✅ 串口已选择';
         document.getElementById('startTestBtn').disabled = false;
-    } catch {
+    } catch (err) {
+        console.error(err);
+        document.getElementById('statusText').innerText = '❌ 串口选择失败';
+    }
+};
+
+document.getElementById('reconnectPortBtn').onclick = async () => {
+    try {
+        port = await navigator.serial.requestPort();
+        document.getElementById('statusText').innerText = '✅ 串口已重新选择';
+        document.getElementById('startTestBtn').disabled = false;
+    } catch (err) {
+        console.error(err);
         document.getElementById('statusText').innerText = '❌ 串口选择失败';
     }
 };
 
 document.getElementById('startTestBtn').onclick = async () => {
     if (!port || isTesting) return;
+
     const baudRate = parseInt(document.getElementById('baudRateSelect').value);
     document.getElementById('statusText').innerText = '⏳ 正在打开串口...';
     isTesting = true;
@@ -138,7 +152,8 @@ document.getElementById('startTestBtn').onclick = async () => {
                 scrollLog('logBox', '⛔ 测试超时');
             }
         }, testTimeout);
-    } catch {
+    } catch (err) {
+        console.error(err);
         document.getElementById('statusText').innerText = '❌ 串口打开失败';
         isTesting = false;
     }
@@ -172,6 +187,10 @@ function readLoop() {
         }, recDataTimeout);
 
         if (isTesting) readLoop();
+    }).catch(err => {
+        console.error('读取错误:', err);
+        cleanup();
+        document.getElementById('statusText').innerText = '❌ 串口读取失败';
     });
 }
 
@@ -250,8 +269,22 @@ function handleReceivedData(buffer) {
 
 function cleanup() {
     isTesting = false;
-    reader?.cancel().catch(() => {});
-    port?.close().catch(() => {});
+
+    if (reader) {
+        reader.cancel().catch(() => {});
+        reader = null;
+    }
+
+    if (writer) {
+        writer.releaseLock();
+        writer = null;
+    }
+
+    if (port) {
+        port.close().catch(() => {});
+        port = null;
+    }
+
     document.getElementById('startTestBtn').disabled = false;
     clearTimeout(retryTimer);
     clearTimeout(timeoutTimer);
