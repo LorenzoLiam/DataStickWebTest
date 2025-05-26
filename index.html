@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="zh">
 <head>
-    <meta charset="UTF-8">
+    <meta charset="UTF-8" />
     <title>数据棒测试</title>
     <style>
         body { font-family: Arial; padding: 20px; }
@@ -36,7 +36,6 @@
 
 <div>
     <button id="requestPortBtn">选择串口</button>
-    <button id="reconnectPortBtn">重新选择串口</button>
     <label>波特率：</label>
     <select id="baudRateSelect">
         <option value="9600">9600</option>
@@ -112,17 +111,6 @@ document.getElementById('requestPortBtn').onclick = async () => {
     }
 };
 
-document.getElementById('reconnectPortBtn').onclick = async () => {
-    try {
-        port = await navigator.serial.requestPort();
-        document.getElementById('statusText').innerText = '✅ 串口已重新选择';
-        document.getElementById('startTestBtn').disabled = false;
-    } catch (err) {
-        console.error(err);
-        document.getElementById('statusText').innerText = '❌ 串口选择失败';
-    }
-};
-
 document.getElementById('startTestBtn').onclick = async () => {
     if (!port || isTesting) return;
 
@@ -131,6 +119,11 @@ document.getElementById('startTestBtn').onclick = async () => {
     isTesting = true;
 
     try {
+        // 确保旧串口完全关闭
+        if (port.readable) {
+            await port.close().catch(() => {});
+        }
+
         await port.open({ baudRate });
         writer = port.writable.getWriter();
         reader = port.readable.getReader();
@@ -267,11 +260,16 @@ function handleReceivedData(buffer) {
         });
 }
 
-function cleanup() {
+async function cleanup() {
     isTesting = false;
 
     if (reader) {
-        reader.cancel().catch(() => {});
+        try {
+            await reader.cancel();
+        } catch (err) {
+            console.error('Reader cancel error:', err);
+        }
+        reader.releaseLock();
         reader = null;
     }
 
@@ -280,32 +278,39 @@ function cleanup() {
         writer = null;
     }
 
-    if (port) {
-        port.close().catch(() => {});
+    if (port && port.readable) {
+        try {
+            await port.close();
+        } catch (err) {
+            console.error('Port close error:', err);
+        }
         port = null;
     }
 
-    document.getElementById('startTestBtn').disabled = false;
     clearTimeout(retryTimer);
     clearTimeout(timeoutTimer);
+
+    document.getElementById('startTestBtn').disabled = false;
 }
 
-// 自动连接已授权的 USB 串口设备
 async function autoConnectUsbSerialPort() {
-    const ports = await navigator.serial.getPorts();
-    for (const p of ports) {
-        const info = p.getInfo();
-        if (info.usbVendorId && info.usbProductId) {
-            port = p;
-            document.getElementById('statusText').innerText = '✅ 已自动连接 USB 串口';
-            document.getElementById('startTestBtn').disabled = false;
-            return;
+    try {
+        const ports = await navigator.serial.getPorts();
+        for (const p of ports) {
+            const info = p.getInfo();
+            if (info.usbVendorId && info.usbProductId) {
+                port = p;
+                document.getElementById('statusText').innerText = '✅ 已自动连接 USB 串口';
+                document.getElementById('startTestBtn').disabled = false;
+                return;
+            }
         }
+        document.getElementById('statusText').innerText = 'ℹ️ 未找到已授权的 USB 串口，请手动选择';
+    } catch (e) {
+        console.error('自动连接失败:', e);
     }
-    document.getElementById('statusText').innerText = 'ℹ️ 未找到已授权的 USB 串口，请手动选择';
 }
 
-// 页面加载时自动尝试连接
 if ("serial" in navigator) {
     autoConnectUsbSerialPort();
 }
