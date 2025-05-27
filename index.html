@@ -98,7 +98,7 @@ const testWebConnection = async (url) => {
         log(`❌ 直接访问失败: ${error.message}`);
     }
 
-    // 定义代理列表（已修复格式错误）
+    // 定义代理列表
     const proxies = [
         `https://api.allorigins.win/raw?url= ${encodeURIComponent(url)}`,
         `https://thingproxy.freeboard.io/fetch/ ${url}`,
