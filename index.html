@@ -23,8 +23,8 @@
     <button id="requestPortBtn">选择串口</button>
     <label>波特率：</label>
     <select id="baudRateSelect">
-        <option value="9600" selected>9600</option>
-        <option value="115200">115200</option>
+        <option value="9600" >9600</option>
+        <option value="115200" selected>115200</option>
         <option value="57600">57600</option>
         <option value="38400">38400</option>
         <option value="19200">19200</option>
@@ -82,6 +82,8 @@ const updateButtonState = () => {
 
 // 测试网址连通性的函数
 const testWebConnection = async (url) => {
+
+    // 尝试直接访问
     try {
         const directResponse = await fetch(url, {
             method: 'GET',
@@ -89,34 +91,62 @@ const testWebConnection = async (url) => {
             cache: 'no-cache'
         });
         if (directResponse.ok) {
-            log(`✅ 直接访问成功`);
+            log('✅ 直接访问成功');
             return true;
         }
     } catch (error) {
         log(`❌ 直接访问失败: ${error.message}`);
     }
 
-    // 尝试使用代理
-    const proxyUrls = [
-        `https://api.allorigins.win/get?url=${encodeURIComponent(url)}`,
-        `https://thingproxy.freeboard.io/fetch/${url}`
-        //`https://thingproxy.freeboard.io/fetch/${url}` 基本废了，如果有私有版本可加回来
+    // 定义代理列表（已修复格式错误）
+    const proxies = [
+        `https://api.allorigins.win/raw?url= ${encodeURIComponent(url)}`,
+        `https://thingproxy.freeboard.io/fetch/ ${url}`,
+        `https://corsproxy.io/? ${encodeURIComponent(url)}`,
+        `https://bird.ioliu.cn/v1/?url= ${encodeURIComponent(url)}`,
+        `https://bypasscors.com/api/?url= ${encodeURIComponent(url)}`
     ];
 
-    for (const proxyUrl of proxyUrls) {
+    // 尝试通过代理访问
+    for (let i = 0; i < proxies.length; i++) {
+        const proxyUrl = proxies[i];
+        const proxyHost = new URL(proxyUrl).hostname;
+
+        log(`🔄 尝试代理: ${proxyHost}`);
         try {
-            const proxyResponse = await fetch(proxyUrl);
-            if (proxyResponse.ok) {
-                log(`✅ 通过代理访问成功: ${new URL(proxyUrl).hostname}`);
-                return true;
+            const response = await fetch(proxyUrl, {
+                method: 'GET',
+                mode: 'cors',
+                cache: 'no-cache',
+                headers: {
+                    'X-Requested-With': 'XMLHttpRequest'
+                }
+            });
+
+            if (response.ok) {
+                const text = await response.text();
+                if (text && text.length > 10) { // 简单判断是否为有效响应
+                    log(`✅ 通过代理访问成功: ${proxyHost}`);
+                    return true;
+                } else {
+                    log(`⚠️ 代理返回空数据: ${proxyHost}`);
+                }
+            } else {
+                log(`❌ 代理返回非 200 状态码: ${proxyHost} (${response.status})`);
             }
-        } catch (proxyError) {
-            log(`❌ 代理 ${new URL(proxyUrl).hostname} 访问失败: ${proxyError.message}`);
+        } catch (err) {
+            log(`❌ 代理访问失败: ${proxyHost} → ${err.message}`);
+        }
+
+        // 防止请求过快导致被屏蔽
+        if (i < proxies.length - 1) {
+            await new Promise(resolve => setTimeout(resolve, 800));
         }
     }
+
+    log('❌ 所有代理均访问失败');
     return false;
 };
-
 
 document.getElementById('requestPortBtn').onclick = async () => {
     try {
