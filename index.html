@@ -44,110 +44,52 @@
 <div id="logBox">测试日志与串口原始数据将显示在这里...</div>
 
 <script>
+// 常量与配置
+const HEX_COMMAND = '0101020001783C';
+const REC_DATA_TIMEOUT = 20;
+const TEST_TIMEOUT = 10000;
+const RETRY_DELAY = TEST_TIMEOUT / 2;
+const SN_OFFSET = [0, 4], IMEI_OFFSET = [4, 8], SIM_OFFSET = [8, 16];
+const MIN_PACKET_LENGTH = 8;
+const TEST_URL = 'http://gw.3wlink.cn:22011/main?dgwkey=ZBsQU5uQoNWdK9x6xG58-o6tQmBaKYN0v9e3R0X37rY';
+const PROXIES = [
+    url => `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`,
+    url => `https://thingproxy.freeboard.io/fetch/${url}`,
+    url => `https://corsproxy.io/?${encodeURIComponent(url)}`,
+    url => `https://bird.ioliu.cn/v1/?url=${encodeURIComponent(url)}`,
+    url => `https://bypasscors.com/api/?url=${encodeURIComponent(url)}`
+];
+
+// 状态变量
 let port = null, reader = null, writer = null;
 let isTesting = false, buffer = new Uint8Array();
 let bufferTimer = null, retryTimer = null, timeoutTimer = null;
 let isProcessingData = false;
 
-const hexCommand = '0101020001783C';
-const recDataTimeout = 20;
-const testTimeout = 10000;
-const retryDelay = testTimeout / 2;
-const snOffset = [0, 4], imeiOffset = [4, 8], simCardOffset = [8, 16];
-
-
-const log = (text) => {
+// 工具函数
+const log = (...args) => {
     const box = document.getElementById('logBox');
-    box.textContent += `\n${text}`;
+    box.textContent += '\n' + args.join(' ');
     box.scrollTop = box.scrollHeight;
 };
-
-const updateStatus = (text) => {
-    document.getElementById('statusText').innerText = text;
+const updateStatus = text => document.getElementById('statusText').innerText = text;
+const updateButtonState = () => {
+    document.getElementById('startTestBtn').disabled = !port || isTesting || isProcessingData;
 };
+const hexToUint8Array = hex => new Uint8Array(hex.match(/.{1,2}/g).map(b => parseInt(b, 16)));
+const concatBuffer = (a, b) => new Uint8Array([...a, ...b]);
 
+// 结果表格
 const appendResult = ({ sn, imei, simCard, serialOk, webOk, status, timestamp }) => {
     const row = `<tr><td>${new Date(timestamp).toLocaleString()}</td><td>${sn || '-'}</td><td>${imei || '-'}</td><td>${simCard || '-'}</td>
         <td class="${serialOk ? 'pass' : 'fail'}">${serialOk ? '正常' : '异常'}</td>
         <td class="${webOk ? 'pass' : 'fail'}">${webOk ? '正常' : '异常'}</td>
         <td class="${status === '通过' ? 'pass' : 'fail'}">${status}</td></tr>`;
     document.getElementById("resultTableBody").insertAdjacentHTML('afterbegin', row);
-    log(`📝 [结果] ${JSON.stringify({ sn, imei, simCard, serialOk, webOk, status })}`);
+    log('📝 [结果]', JSON.stringify({ sn, imei, simCard, serialOk, webOk, status }));
 };
 
-const updateButtonState = () => {
-    const startBtn = document.getElementById('startTestBtn');
-    startBtn.disabled = !port || isTesting || isProcessingData;
-};
-
-// 测试网址连通性的函数
-const testWebConnection = async (url) => {
-
-    // 尝试直接访问
-    try {
-        const directResponse = await fetch(url, {
-            method: 'GET',
-            mode: 'cors',
-            cache: 'no-cache'
-        });
-        if (directResponse.ok) {
-            log('✅ 直接访问成功');
-            return true;
-        }
-    } catch (error) {
-        log(`❌ 直接访问失败: ${error.message}`);
-    }
-
-    // 定义代理列表
-    const proxies = [
-        `https://api.allorigins.win/raw?url= ${encodeURIComponent(url)}`,
-        `https://thingproxy.freeboard.io/fetch/ ${url}`,
-        `https://corsproxy.io/? ${encodeURIComponent(url)}`,
-        `https://bird.ioliu.cn/v1/?url= ${encodeURIComponent(url)}`,
-        `https://bypasscors.com/api/?url= ${encodeURIComponent(url)}`
-    ];
-
-    // 尝试通过代理访问
-    for (let i = 0; i < proxies.length; i++) {
-        const proxyUrl = proxies[i];
-        const proxyHost = new URL(proxyUrl).hostname;
-
-        log(`🔄 尝试代理: ${proxyHost}`);
-        try {
-            const response = await fetch(proxyUrl, {
-                method: 'GET',
-                mode: 'cors',
-                cache: 'no-cache',
-                headers: {
-                    'X-Requested-With': 'XMLHttpRequest'
-                }
-            });
-
-            if (response.ok) {
-                const text = await response.text();
-                if (text && text.length > 10) { // 简单判断是否为有效响应
-                    log(`✅ 通过代理访问成功: ${proxyHost}`);
-                    return true;
-                } else {
-                    log(`⚠️ 代理返回空数据: ${proxyHost}`);
-                }
-            } else {
-                log(`❌ 代理返回非 200 状态码: ${proxyHost} (${response.status})`);
-            }
-        } catch (err) {
-            log(`❌ 代理访问失败: ${proxyHost} → ${err.message}`);
-        }
-
-        // 防止请求过快导致被屏蔽
-        if (i < proxies.length - 1) {
-            await new Promise(resolve => setTimeout(resolve, 800));
-        }
-    }
-
-    log('❌ 所有代理均访问失败');
-    return false;
-};
-
+// 串口选择
 document.getElementById('requestPortBtn').onclick = async () => {
     try {
         port = await navigator.serial.requestPort();
@@ -158,8 +100,7 @@ document.getElementById('requestPortBtn').onclick = async () => {
     }
 };
 
-
-
+// 开始检测
 document.getElementById('startTestBtn').onclick = async () => {
     if (!port || isTesting || isProcessingData) return;
     const baudRate = parseInt(document.getElementById('baudRateSelect').value);
@@ -167,6 +108,8 @@ document.getElementById('startTestBtn').onclick = async () => {
     isTesting = true;
     isProcessingData = false;
     updateButtonState();
+
+    buffer = new Uint8Array();
 
     try {
         await port.open({ baudRate });
@@ -180,7 +123,7 @@ document.getElementById('startTestBtn').onclick = async () => {
                 log('⏳ 未收到数据，重发指令');
                 sendCommand();
             }
-        }, retryDelay);
+        }, RETRY_DELAY);
 
         timeoutTimer = setTimeout(() => {
             if (isTesting) {
@@ -188,45 +131,37 @@ document.getElementById('startTestBtn').onclick = async () => {
                 log('⛔ 测试超时');
                 cleanup();
             }
-        }, testTimeout);
+        }, TEST_TIMEOUT);
     } catch (e) {
         updateStatus('❌ 串口打开失败');
-        log(`❌ 错误: ${e}`);
+        log('❌ 错误:', e);
         isTesting = false;
-         cleanup();
+        cleanup();
         updateButtonState();
     }
 };
 
 const sendCommand = () => {
     if (writer && !isProcessingData) {
-        writer.write(hexToUint8Array(hexCommand));
-        log(`📤 已发送指令: ${hexCommand}`);
+        writer.write(hexToUint8Array(HEX_COMMAND));
+        log('📤 已发送指令:', HEX_COMMAND);
     }
 };
 
-const hexToUint8Array = hex => new Uint8Array(hex.match(/.{1,2}/g).map(b => parseInt(b, 16)));
-
-const concatBuffer = (a, b) => new Uint8Array([...a, ...b]);
-
-const readLoop = () => {
+const readLoop = async () => {
     if (!isTesting || isProcessingData) return;
-
-    reader.read().then(({ value, done }) => {
+    try {
+        const { value, done } = await reader.read();
         if (done || !value || isProcessingData) return;
-
         buffer = concatBuffer(buffer, value);
 
-        // 判断是否为 ASCII 模式，是否包含换行符
         const text = new TextDecoder().decode(buffer);
         if (text.includes('\n')) {
-            // ASCII 模式，以换行结尾，立即处理
             isProcessingData = true;
             updateButtonState();
             handleReceivedData(buffer);
-            buffer = new Uint8Array();  // 清空缓冲
+            buffer = new Uint8Array();
         } else {
-            // HEX 模式，使用定时器合包
             if (bufferTimer) clearTimeout(bufferTimer);
             bufferTimer = setTimeout(() => {
                 if (!isProcessingData) {
@@ -235,36 +170,21 @@ const readLoop = () => {
                     handleReceivedData(buffer);
                     buffer = new Uint8Array();
                 }
-            }, recDataTimeout);
+            }, REC_DATA_TIMEOUT);
         }
-
         if (isTesting && !isProcessingData) readLoop();
-    }).catch(err => {
-        log(`❌ 串口读取异常: ${err}`);
+    } catch (err) {
+        log('❌ 串口读取异常:', err);
         updateStatus('❌ 请重试');
         cleanup();
-    });
+    }
 };
 
-
-const handleReceivedData = (buf) => {
-    clearTimeout(retryTimer);
-    clearTimeout(timeoutTimer);
-   
-    // ✅ 最小长度判断
-    if (buf.length < 8) {
-        log(`⚠️ 丢弃无效数据（长度不足 ${MIN_PACKET_LENGTH} 字节）：${[...buf].map(b => b.toString(16).padStart(2, '0')).join(' ')}`);
-        readLoop();  // 或者继续等待下一次 readLoop
-        return;
-    }
-    let sn = null, imei = null, simCard = null;
-    let serialOk = false;
-
+// 数据解析
+const parseReceivedData = buf => {
     const hexStr = [...buf].map(b => b.toString(16).padStart(2, '0')).join('');
     const asciiStr = new TextDecoder().decode(buf).trim();
-
-    log(`📥 收到数据：${hexStr}`);
-    log(`🔄 开始解析...`);
+    let sn = null, imei = null, simCard = null;
 
     try {
         const json = JSON.parse(asciiStr);
@@ -273,29 +193,42 @@ const handleReceivedData = (buf) => {
         simCard = json.sim || json.SIM || null;
     } catch {
         try {
-            const hexToText = new TextDecoder().decode(hexToUint8Array(hexStr.replace(/\s+/g, '')));
-            const json = JSON.parse(hexToText);
+            const json = JSON.parse(new TextDecoder().decode(hexToUint8Array(hexStr)));
             sn = json.sn || json.SN || null;
             imei = json.imei || json.IMEI || null;
             simCard = json.sim || json.SIM || null;
         } catch {
-            sn = hexStr.slice(...snOffset).toUpperCase();
-            imei = hexStr.slice(...imeiOffset);
-            simCard = hexStr.slice(...simCardOffset);
+            sn = hexStr.slice(...SN_OFFSET).toUpperCase();
+            imei = hexStr.slice(...IMEI_OFFSET);
+            simCard = hexStr.slice(...SIM_OFFSET);
             log(`📦 解析: SN=${sn}, IMEI=${imei}, SIM=${simCard}`);
         }
     }
+    return { sn, imei, simCard };
+};
 
-    serialOk = Boolean(sn || imei || simCard);
-    updateStatus(`🔗 正在测试网页连接...`);
-    if (!sn) {  
-        log(`⚠️ SN 为空，跳过网页测试`);
+const handleReceivedData = buf => {
+    clearTimeout(retryTimer);
+    clearTimeout(timeoutTimer);
+
+    if (buf.length < MIN_PACKET_LENGTH) {
+        log(`⚠️ 丢弃无效数据（长度不足 ${MIN_PACKET_LENGTH} 字节）：${[...buf].map(b => b.toString(16).padStart(2, '0')).join(' ')}`);
+        readLoop();
+        return;
+    }
+    log('📥 收到数据：', [...buf].map(b => b.toString(16).padStart(2, '0')).join(''));
+    log('🔄 开始解析...');
+
+    const { sn, imei, simCard } = parseReceivedData(buf);
+    const serialOk = Boolean(sn || imei || simCard);
+
+    updateStatus('🔗 正在测试网页连接...');
+    if (!sn) {
+        log('⚠️ SN 为空，跳过网页测试');
         finalizeResult({ sn, imei, simCard, serialOk, webOk: false });
     } else {
-        //const testUrl = `http://gw.3wlink.cn:22011/login?dgwkey=${encodeURIComponent(sn)}`;
-        const testUrl = `http://gw.3wlink.cn:22011/main?dgwkey=ZBsQU5uQoNWdK9x6xG58-o6tQmBaKYN0v9e3R0X37rY`;
-        log(`🌐 测试网址: ${testUrl}`);
-        testWebConnection(testUrl)
+        log('🌐 测试网址:', TEST_URL);
+        testWebConnection(TEST_URL)
             .then(webOk => finalizeResult({ sn, imei, simCard, serialOk, webOk }))
             .catch(() => finalizeResult({ sn, imei, simCard, serialOk, webOk: false }));
     }
@@ -303,11 +236,7 @@ const handleReceivedData = (buf) => {
 
 const finalizeResult = ({ sn, imei, simCard, serialOk, webOk }) => {
     const result = {
-        sn,
-        imei,
-        simCard,
-        serialOk,
-        webOk,
+        sn, imei, simCard, serialOk, webOk,
         status: (serialOk && webOk) ? '通过' : '不通过',
         timestamp: Date.now()
     };
@@ -316,13 +245,56 @@ const finalizeResult = ({ sn, imei, simCard, serialOk, webOk }) => {
     cleanup();
 };
 
+// 网页连通性测试
+const testWebConnection = async url => {
+    try {
+        const directResponse = await fetch(url, { method: 'GET', mode: 'cors', cache: 'no-cache' });
+        if (directResponse.ok) {
+            log('✅ 直接访问成功');
+            return true;
+        }
+    } catch (error) {
+        log('❌ 直接访问失败:', error.message);
+    }
+    for (let i = 0; i < PROXIES.length; i++) {
+        const proxyUrl = PROXIES[i](url);
+        const proxyHost = new URL(proxyUrl).hostname;
+        log('🔄 尝试代理:', proxyHost);
+        try {
+            const response = await fetch(proxyUrl, {
+                method: 'GET',
+                mode: 'cors',
+                cache: 'no-cache',
+                headers: { 'X-Requested-With': 'XMLHttpRequest' }
+            });
+            if (response.ok) {
+                const text = await response.text();
+                if (text && text.length > 10) {
+                    log('✅ 通过代理访问成功:', proxyHost);
+                    return true;
+                } else {
+                    log('⚠️ 代理返回空数据:', proxyHost);
+                }
+            } else {
+                log(`❌ 代理返回非 200 状态码: ${proxyHost} (${response.status})`);
+            }
+        } catch (err) {
+            log('❌ 代理访问失败:', proxyHost, '→', err.message);
+        }
+        if (i < PROXIES.length - 1) await new Promise(resolve => setTimeout(resolve, 800));
+    }
+    log('❌ 所有代理均访问失败');
+    return false;
+};
+
+// 清理与自动重连
 const cleanup = async () => {
     isTesting = false;
     isProcessingData = false;
     clearTimeout(retryTimer);
     clearTimeout(timeoutTimer);
     clearTimeout(bufferTimer);
-    
+
     if (reader) {
         try { await reader.cancel(); } catch {}
         reader.releaseLock();
@@ -335,7 +307,6 @@ const cleanup = async () => {
     if (port) {
         try { await port.close(); } catch {}
     }
-    
     updateButtonState();
     autoConnectUsbSerialPort();
 };
