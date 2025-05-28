@@ -30,6 +30,7 @@
         <option value="19200">19200</option>
     </select>
     <button id="startTestBtn" disabled>开始检测</button>
+    <button id="saveRecordsBtn">保存测试记录</button>
 
     <div id="statusText"></div>
 </div>
@@ -65,6 +66,7 @@ let port = null, reader = null, writer = null;
 let isTesting = false, buffer = new Uint8Array();
 let bufferTimer = null, retryTimer = null, timeoutTimer = null;
 let isProcessingData = false;
+let testRecords = [];
 
 // 工具函数
 const log = (...args) => {
@@ -242,6 +244,7 @@ const finalizeResult = ({ sn, imei, simCard, serialOk, webOk }) => {
         status: (serialOk && webOk) ? '通过' : '不通过',
         timestamp: Date.now()
     };
+    testRecords.push(result);
     appendResult(result);
     updateStatus(`✅ 测试完成，结果：${result.status}`);
     cleanup();
@@ -324,6 +327,34 @@ const autoConnectUsbSerialPort = async () => {
         }
     }
     updateStatus('ℹ️ 未找到已授权的 USB 串口，请手动选择');
+};
+
+//保存
+document.getElementById('saveRecordsBtn').onclick = () => {
+    if (testRecords.length === 0) {
+        alert('没有测试记录可保存！');
+        return;
+    }
+    const header = ['时间', 'SN', 'IMEI', 'ICCID', '串口通信', '网页访问', '测试结果'];
+    const rows = testRecords.map(r => [
+        new Date(r.timestamp).toLocaleString(),
+        r.sn || '-',
+        r.imei || '-',
+        r.simCard || '-',
+        r.serialOk ? '正常' : '异常',
+        r.webOk ? '正常' : '异常',
+        r.status
+    ]);
+    const csvContent = [header, ...rows].map(e => e.join(',')).join('\r\n');
+    const blob = new Blob([csvContent], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'test_records.csv';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
 };
 
 if ('serial' in navigator) autoConnectUsbSerialPort();
