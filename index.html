@@ -111,6 +111,8 @@ document.getElementById('startTestBtn').onclick = async () => {
 
     buffer = new Uint8Array();
 
+    document.getElementById('logBox').textContent = '测试日志与串口原始数据将显示在这里...';
+
     try {
         await port.open({ baudRate });
         writer = port.writable.getWriter();
