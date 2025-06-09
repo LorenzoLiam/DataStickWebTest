@@ -82,13 +82,13 @@ const hexToUint8Array = hex => new Uint8Array(hex.match(/.{1,2}/g).map(b => pars
 const concatBuffer = (a, b) => new Uint8Array([...a, ...b]);
 
 // 结果表格
-const appendResult = ({ sn, imei, simCard, serialOk, webOk, status, timestamp }) => {
-    const row = `<tr><td>${new Date(timestamp).toLocaleString()}</td><td>${sn || '-'}</td><td>${imei || '-'}</td><td>${simCard || '-'}</td>
-        <td class="${serialOk ? 'pass' : 'fail'}">${serialOk ? '正常' : '异常'}</td>
-        <td class="${webOk ? 'pass' : 'fail'}">${webOk ? '正常' : '异常'}</td>
+const appendResult = ({ sn, imei, iccid, serial, web, status, timestamp }) => {
+    const row = `<tr><td>${new Date(timestamp).toLocaleString()}</td><td>${sn || '-'}</td><td>${imei || '-'}</td><td>${iccid || '-'}</td>
+        <td class="${serial ? 'pass' : 'fail'}">${serial ? '正常' : '异常'}</td>
+        <td class="${web ? 'pass' : 'fail'}">${web ? '正常' : '异常'}</td>
         <td class="${status === '通过' ? 'pass' : 'fail'}">${status}</td></tr>`;
     document.getElementById("resultTableBody").insertAdjacentHTML('afterbegin', row);
-    log('📝 [结果]', JSON.stringify({ sn, imei, simCard, serialOk, webOk, status }));
+    log('📝 [结果]', JSON.stringify({ sn, imei, iccid, serial, web, status }));
 };
 
 // 串口选择
@@ -188,27 +188,27 @@ const readLoop = async () => {
 const parseReceivedData = buf => {
     const hexStr = [...buf].map(b => b.toString(16).padStart(2, '0')).join('');
     const asciiStr = new TextDecoder().decode(buf).trim();
-    let sn = null, imei = null, simCard = null;
+    let sn = null, imei = null, iccid = null;
 
     try {
         const json = JSON.parse(asciiStr);
         sn = json.sn || json.SN || null;
         imei = json.imei || json.IMEI || null;
-        simCard = json.sim || json.SIM || null;
+        iccid = json.sim || json.SIM || null;
     } catch {
         try {
             const json = JSON.parse(new TextDecoder().decode(hexToUint8Array(hexStr)));
             sn = json.sn || json.SN || null;
             imei = json.imei || json.IMEI || null;
-            simCard = json.sim || json.SIM || null;
+            iccid = json.sim || json.SIM || null;
         } catch {
             sn = hexStr.slice(...SN_OFFSET).toUpperCase();
             imei = hexStr.slice(...IMEI_OFFSET);
-            simCard = hexStr.slice(...SIM_OFFSET);
-            log(`📦 解析: SN=${sn}, IMEI=${imei}, SIM=${simCard}`);
+            iccid = hexStr.slice(...SIM_OFFSET);
+            log(`📦 解析: SN=${sn}, IMEI=${imei}, SIM=${iccid}`);
         }
     }
-    return { sn, imei, simCard };
+    return { sn, imei, iccid };
 };
 
 const handleReceivedData = buf => {
@@ -223,25 +223,25 @@ const handleReceivedData = buf => {
     log('📥 收到数据：', [...buf].map(b => b.toString(16).padStart(2, '0')).join(''));
     log('🔄 开始解析...');
 
-    const { sn, imei, simCard } = parseReceivedData(buf);
-    const serialOk = Boolean(sn || imei || simCard);
+    const { sn, imei, iccid } = parseReceivedData(buf);
+    const serial = Boolean(sn || imei || iccid);
 
     updateStatus('🔗 正在测试网页连接...');
     if (!sn) {
         log('⚠️ SN 为空，跳过网页测试');
-        finalizeResult({ sn, imei, simCard, serialOk, webOk: false });
+        finalizeResult({ sn, imei, iccid, serial, web: false });
     } else {
         log('🌐 测试网址:', TEST_URL);
         testWebConnection(TEST_URL)
-            .then(webOk => finalizeResult({ sn, imei, simCard, serialOk, webOk }))
-            .catch(() => finalizeResult({ sn, imei, simCard, serialOk, webOk: false }));
+            .then(web => finalizeResult({ sn, imei, iccid, serial, web }))
+            .catch(() => finalizeResult({ sn, imei, iccid, serial, web: false }));
     }
 };
 
-const finalizeResult = ({ sn, imei, simCard, serialOk, webOk }) => {
+const finalizeResult = ({ sn, imei, iccid, serial, web }) => {
     const result = {
-        sn, imei, simCard, serialOk, webOk,
-        status: (serialOk && webOk) ? '通过' : '不通过',
+        sn, imei, iccid, serial, web,
+        status: (serial && web) ? '通过' : '不通过',
         timestamp: Date.now()
     };
     testRecords.push(result);
@@ -340,9 +340,9 @@ document.getElementById('saveRecordsBtn').onclick = () => {
         new Date(r.timestamp).toLocaleString(),
         r.sn || '-',
         r.imei || '-',
-        r.simCard || '-',
-        r.serialOk ? '正常' : '异常',
-        r.webOk ? '正常' : '异常',
+        r.iccid || '-',
+        r.serial ? '正常' : '异常',
+        r.web ? '正常' : '异常',
         r.status
     ]);
     const csvContent = [header, ...rows].map(e => e.join(',')).join('\r\n');
