@@ -39,10 +39,12 @@
 <div class="flex">
     <div class="panel panel-green">
         <h3>设备状态监控</h3>
-        <button class="btn" id="selectStatusBtn">选择状态串口</button>
-        <button class="btn" id="connectStatusBtn">连接</button>
-        <button class="btn" id="disconnectStatusBtn">断开</button>
-        <div id="statusMsg"></div>
+        <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+            <button class="btn" id="selectStatusBtn">选择状态串口</button>
+            <button class="btn" id="connectStatusBtn">连接</button>
+            <button class="btn" id="disconnectStatusBtn">断开</button>
+            <div id="statusMsg"></div>
+        </div>
     </div>
 
     <div class="panel panel-blue">
@@ -104,9 +106,8 @@
                 const keyBytes = new TextEncoder().encode(config.aes.keyString);
                 this._iv = new TextEncoder().encode(config.aes.ivString);
                 this._key = await crypto.subtle.importKey('raw', keyBytes, { name: 'AES-CBC' }, false, ['encrypt']);
-                console.log("AES key initialized successfully.");
             } catch (error) {
-                console.error("Failed to initialize AES key:", error);
+                console.error(":", error);
                 throw error;
             }
         },
@@ -129,7 +130,7 @@
                 const base64 = btoa(String.fromCharCode(...truncated));
                 return base64.replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
             } catch (error) {
-                console.error('Encryption failed:', error);
+                console.error('加密失败:', error);
                 return null;
             }
         }
@@ -220,7 +221,7 @@
                 const portIndex = allPorts.indexOf(selectedPort);
                 if (portIndex > -1) { localStorage.setItem(`serialPort_${type}`, portIndex.toString()); this.log(`💾 已保存 ${type === 'status' ? '状态' : '测试'} 串口选择`); }
             } catch (e) {
-                console.error('Failed to save port selection:', e);
+                console.error('保持选择端口失败:', e);
             }
         },
 
@@ -232,7 +233,7 @@
                 const allPorts = await navigator.serial.getPorts();
                 return allPorts[parseInt(savedIndex, 10)] || null;
             } catch (e) {
-                console.error('Failed to load port selection:', e);
+                console.error('未能加载端口选择:', e);
                 return null;
             }
         },
@@ -338,50 +339,68 @@
                 if (!await this.test.connect(config.baudRates.test)) { throw new Error('测试串口连接失败'); }
                 
                 this.currentTestStep = 'WAITING_FOR_DSN';
-                const command = `ccmd DSN;${sn}\n`;
+                this.startTestReadLoop(sn);
+                const command = `ccmd DSN;${sn}\r\n`;
                 await this.test.writer.write(new TextEncoder().encode(command));
                 this.log(`📤 已发送指令: ${command.trim()}`);
-                this.startTestReadLoop(sn);
             } catch (e) {
                 this.log(`❌ 测试启动失败: ${e.message}`);
                 this.finishTest({ sn, serial: false, web: false });
             }
         },
 
-        // 启动测试串口的循环读取，作为状态机处理串行指令
+        // 启动测试串口的循环读取，优化版本
         startTestReadLoop(sn) {
+            this.processingData = false;
             this.test.buffer = '';
+            
+            // 定义处理配置
+            const stepConfigs = {
+                'WAITING_FOR_DSN': {pattern: /DSN;(\S+)/,prefix: 'DSN;',valueName: 'sn',command: 'ccmd DSN;\r\n',nextStep: 'WAITING_FOR_IMEI',nextCommand: 'ccmd IMEI;\r\n',expectedValue: sn},
+                'WAITING_FOR_IMEI': {pattern: /IMEI;(\S+)/,prefix: 'IMEI;',valueName: 'imei',command: 'ccmd IMEI;\r\n',nextStep: 'WAITING_FOR_ICCID',nextCommand: 'ccmd ICCID;\r\n'},
+                'WAITING_FOR_ICCID': {pattern: /ICCID;(\S+)/,prefix: 'ICCID;',valueName: 'iccid',command: 'ccmd ICCID;\r\n',nextStep: 'PERFORMING_WEB_TEST'}
+            };
+
             this.test.readLoop(async (textData) => {
+                if (this.processingData) return;
                 this.test.buffer += textData;
-                const lines = this.test.buffer.split(/[\r\n]+/);
-                this.test.buffer = lines.pop() || '';
 
-                for (const line of lines) {
-                    if (!line || this.currentTestStep === 'DONE') continue;
-                    
-                    try {
-                        const dsnCommand = `ccmd DSN;${sn}\n`;
-                        const imeiCommand = `ccmd IMEI;\n`;
-                        const iccidCommand = `ccmd ICCID;\n`;
+                try {
+                    const config = stepConfigs[this.currentTestStep];
+                    if (!config) return;
 
-                        if (this.currentTestStep === 'WAITING_FOR_DSN' && line.startsWith('DSN;')) {
-                            await this.handleSerialResponse({ line, prefix: 'DSN;', valueName: 'sn', receivedValue: line.substring(4).trim(), expectedValue: sn, currentCommand: dsnCommand, nextStep: 'WAITING_FOR_IMEI', nextCommand: imeiCommand });
-                        }
-                        else if (this.currentTestStep === 'WAITING_FOR_IMEI' && line.startsWith('IMEI;')) {
-                            await this.handleSerialResponse({ line, prefix: 'IMEI;', valueName: 'imei', receivedValue: line.substring(5).trim(), currentCommand: imeiCommand, nextStep: 'WAITING_FOR_ICCID', nextCommand: iccidCommand });
-                        }
-                        else if (this.currentTestStep === 'WAITING_FOR_ICCID' && line.startsWith('ICCID;')) {
-                            await this.handleSerialResponse({ line, prefix: 'ICCID;', valueName: 'iccid', receivedValue: line.substring(6).trim(), currentCommand: iccidCommand, nextStep: 'PERFORMING_WEB_TEST' });
-                        }
-                    } catch (e) {
-                        this.log(`❌ 处理串口数据时出错: ${e.message}`);
-                        this.finishTest({ sn, serial: false, web: false });
+                    const match = this.test.buffer.match(config.pattern);
+                    if (match) {
+                        this.processingData = true;
+                        const receivedValue = match[1].trim();
+                        
+                        await this.handleSerialResponse({
+                            line: `${config.prefix}${receivedValue}`,
+                            prefix: config.prefix,
+                            valueName: config.valueName,
+                            receivedValue,
+                            expectedValue: config.expectedValue,
+                            currentCommand: config.command,
+                            nextStep: config.nextStep,
+                            nextCommand: config.nextCommand
+                        });
+                        
+                        this.test.buffer = '';
+                        this.processingData = false;
                     }
+                } catch (e) {
+                    this.log(`❌ 处理串口数据时出错: ${e.message}`);
+                    this.finishTest({ sn, serial: false, web: false });
+                    this.processingData = false;
                 }
             }, (e) => {
-                if (this.testing) { this.log(`❌ 测试串口读取异常: ${e.message}`); this.finishTest({ sn, serial: false, web: false }); }
+                if (this.testing) { 
+                    this.log(`❌ 测试串口读取异常: ${e.message}`); 
+                    this.finishTest({ sn, serial: false, web: false }); 
+                }
             });
         },
+
         
         // 统一处理串口响应、重试和流程推进
         async handleSerialResponse(options) {
@@ -391,25 +410,37 @@
             if (receivedValue.toLowerCase() === 'error') {
                 this.retryState[valueName] = (this.retryState[valueName] || 0) + 1;
                 if (this.retryState[valueName] < 2) {
-                    this.log(`🟡 收到 ${prefix} 错误，正在重试... (第 ${this.retryState[valueName]} 次)`);
+                    this.log(`🟡 收到 ${prefix}ERROR，正在重试... (第 ${this.retryState[valueName]} 次)`);
                     await this.test.writer.write(new TextEncoder().encode(currentCommand));
                 } else {
-                    this.log(`❌ 收到 ${prefix} `);
-                    this.addOrUpdateTestResult({ sn, [valueName]: '-' });
+                    this.log(`❌ 收到 ${prefix}ERROR`);
+                    this.addOrUpdateTestResult({ sn, [valueName]: '-', [`${valueName}Failed`]: true });
                     await this.moveToNextStep(sn, nextStep, nextCommand);
                 }
                 return;
             }
 
             if (expectedValue && receivedValue !== expectedValue) {
-                this.log(`❌ SN不匹配! 发送: ${expectedValue}, 收到: ${receivedValue}`);
-                this.finishTest({ sn, serial: false, web: false });
+                this.retryState.snMismatch = (this.retryState.snMismatch || 0) + 1;
+                if (this.retryState.snMismatch < 2) {
+                    this.log(`❌ SN不匹配! 发送: ${expectedValue}, 收到: ${receivedValue}，正在重试... (第 ${this.retryState.snMismatch} 次)`);
+                    await this.test.writer.write(new TextEncoder().encode(currentCommand));
+                } else {
+                    this.log(`❌ SN不匹配! 发送: ${expectedValue}, 收到: ${receivedValue}`);
+                    this.addOrUpdateTestResult({ sn, snMismatch: true });
+                    this.finishTest({ sn, serial: false, web: false });
+                }
                 return;
             }
-            if (valueName === 'sn') this.addOrUpdateTestResult({ sn, serial: true }); // DSN成功代表串口通信第一步成功
+            if (valueName === 'sn') this.addOrUpdateTestResult({ sn, serial: true, snMatch: true }); // DSN成功代表串口通信第一步成功
             
             this.log(`✅ 收到 ${prefix} ${receivedValue}`);
-            this.addOrUpdateTestResult({ sn, [valueName]: receivedValue });
+            // 如果是SN响应，使用设备回复的SN值更新表格
+            if (valueName === 'sn') {
+                this.addOrUpdateTestResult({ sn: receivedValue, [valueName]: receivedValue });
+            } else {
+                this.addOrUpdateTestResult({ sn, [valueName]: receivedValue });
+            }
             await this.moveToNextStep(sn, nextStep, nextCommand);
         },
 
@@ -471,7 +502,7 @@
             let record = this.records.find(r => r.sn === partialResult.sn);
 
             if (!record) {
-                record = { sn: partialResult.sn, timestamp: Date.now(), imei: '-', iccid: '-', serial: 'pending', web: 'pending', status: 'pending', row: ui.resultBody.insertRow(0) };
+                record = { sn: partialResult.sn, timestamp: Date.now(), imei: '-', iccid: '-', serial: 'pending', web: 'pending', status: 'pending', row: ui.resultBody.insertRow(0), snMismatch: false, snMatch: false };
                 this.records.unshift(record);
                 for (let i = 0; i < 7; i++) record.row.insertCell();
             }
@@ -482,8 +513,11 @@
 
             row.cells[0].textContent = new Date(timestamp).toLocaleString();
             row.cells[1].textContent = sn;
+            row.cells[1].className = record.snMismatch ? 'fail' : (record.snMatch ? 'pass' : '');
             row.cells[2].textContent = imei;
+            row.cells[2].className = imei !== '-' ? 'pass' : (record.imeiFailed || status !== 'pending' ? 'fail' : '');
             row.cells[3].textContent = iccid;
+            row.cells[3].className = iccid !== '-' ? 'pass' : (record.iccidFailed || status !== 'pending' ? 'fail' : '');
             const serialStatus = getTextAndClass(serial);
             row.cells[4].textContent = serialStatus.text;
             row.cells[4].className = serialStatus.className;
