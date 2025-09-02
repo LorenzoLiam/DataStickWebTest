@@ -11,6 +11,9 @@
         .panel { border: 1px solid #ddd; border-radius: 8px; padding: 15px; margin: 10px 0; background-color: #fff; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
         .panel-green { border-color: #28a745; background: #f0fff0; }
         .panel-blue { border-color: #007bff; background: #f0f8ff; }
+        .status-reporting { color: #ffc107; }
+        .status-report-success { color: #28a745; }
+        .status-report-failed { color: #dc3545; }
         .flex { display: flex; gap: 20px; flex-wrap: wrap; }
         .flex > div { flex: 1; min-width: 300px; }
         .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 15px; }
@@ -56,8 +59,8 @@
                 <input type="text" id="scanInput" placeholder="请使用扫码枪扫描..." />
             </div>
             <button class="btn" id="saveRecordsBtn">保存记录</button>
+            <div id="testMsg"></div>
         </div>
-        <div id="testMsg"></div>
     </div>
 </div>
 
@@ -68,7 +71,7 @@
 
 <div class="panel">
     <table>
-        <thead><tr><th>时间</th><th>SN</th><th>IMEI</th><th>ICCID</th><th>串口通信</th><th>网页访问</th><th>测试结果</th></tr></thead>
+        <thead><tr><th>时间</th><th>SN</th><th>IMEI</th><th>ICCID</th><th>串口通信</th><th>网页访问</th><th>测试结果</th><th>上报状态</th></tr></thead>
         <tbody id="resultBody"></tbody>
     </table>
 </div>
@@ -78,9 +81,13 @@
 <script>
     const config = {
         aes: { keyString: "me%ov2Ied|eicegh", ivString: "me%ov2Ied|eicegh" },
-        urls: { test: "http://gw.3wlink.cn:22011/?dgwkey=", proxies: ['https://api.allorigins.win/raw?url=', 'https://corsproxy.io/?', 'https://cors-anywhere.herokuapp.com/', 'https://thingproxy.freeboard.io/fetch/', 'https://api.codetabs.com/v1/proxy?quest=', 'https://yacdn.org/proxy/', 'https://cors.bridged.cc/'] },
+        urls: { 
+            test: "http://gw.3wlink.cn:22011/?dgwkey=",
+            report: "https://webhook.site/02ce59b3-856d-4142-b71f-9e5256be505a" // 上报服务器URL
+        },
         baudRates: { status: 115200, test: 10000000 },
-        timeouts: { test: 20000, fetch: 5000, proxyFetch: 3000 }
+        timeouts: { test: 20000, fetch: 5000, report: 10000 },
+        autoReport: true // 自动上报所有测试结果
     };
 
     const ui = {
@@ -184,6 +191,7 @@
         testTimeout: null,
         currentTestStep: '',
         retryState: {},
+        reporting: false,
 
         // 在日志框中打印一条带时间戳的日志
         log(msg) {
@@ -470,9 +478,14 @@
             if (!testUrl) { this.log('❌ URL 生成失败'); return false; }
             this.log(`🌐 测试网址: ${testUrl}`);
             const fetchData = async (url, timeout) => { const controller = new AbortController(); const timeoutId = setTimeout(() => controller.abort(), timeout); try { const response = await fetch(url, { signal: controller.signal, mode: 'cors', cache: 'no-cache' }); return response.ok; } finally { clearTimeout(timeoutId); } };
-            try { if (await fetchData(testUrl, config.timeouts.fetch)) { this.log('✅ 网络访问成功 (直连)'); return true; } } catch (e) { this.log(`🟡 直连失败: ${e.message}. 尝试使用代理...`); }
-            for (const proxy of config.urls.proxies) { try { const proxyUrl = proxy + encodeURIComponent(testUrl); this.log(`🔄 尝试代理: ${new URL(proxy).hostname}`); if (await fetchData(proxyUrl, config.timeouts.proxyFetch)) { this.log('✅ 网络访问成功 (通过代理)'); return true; } } catch (e) { this.log(`❌ 代理失败 (${new URL(proxy).hostname}): ${e.message}`); } }
-            this.log('❌ 所有网络测试均失败');
+            try { 
+                if (await fetchData(testUrl, config.timeouts.fetch)) { 
+                    this.log('✅ 网络访问成功'); 
+                    return true; 
+                } 
+            } catch (e) { 
+                this.log(`❌ 网络访问失败: ${e.message}`); 
+            }
             return false;
         },
 
@@ -488,6 +501,11 @@
 
             this.log(`📊 测试完成: ${finalResult.status}`);
             this.updateUI('testMsg', `✅ 测试完成: ${finalResult.status}`, finalResult.status === '通过' ? 'success' : 'error');
+            
+            // 自动上报功能
+            if (config.autoReport) {
+                setTimeout(() => this.reportResults(), 1000); // 延迟1秒自动上报所有结果
+            }
             await this.test.disconnect();
             this.testing = false;
             this.updateButtons();
@@ -502,9 +520,9 @@
             let record = this.records.find(r => r.sn === partialResult.sn);
 
             if (!record) {
-                record = { sn: partialResult.sn, timestamp: Date.now(), imei: '-', iccid: '-', serial: 'pending', web: 'pending', status: 'pending', row: ui.resultBody.insertRow(0), snMismatch: false, snMatch: false };
+                record = { sn: partialResult.sn, timestamp: Date.now(), imei: '-', iccid: '-', serial: 'pending', web: 'pending', status: 'pending', row: ui.resultBody.insertRow(0), snMismatch: false, snMatch: false, reported: false };
                 this.records.unshift(record);
-                for (let i = 0; i < 7; i++) record.row.insertCell();
+                for (let i = 0; i < 8; i++) record.row.insertCell(); // 增加一列用于上报状态
             }
 
             Object.assign(record, partialResult);
@@ -531,6 +549,83 @@
             } else {
                 row.cells[6].textContent = '测试中...';
                 row.cells[6].className = 'testing';
+            }
+
+            // 更新上报状态列
+            if (record.reported) {
+                row.cells[7].textContent = '已上报';
+                row.cells[7].className = 'pass';
+            } else if (status !== 'pending') {
+                row.cells[7].textContent = '待上报';
+                row.cells[7].className = 'testing';
+            } else {
+                row.cells[7].textContent = 'pending';
+                row.cells[7].className = '';
+            }
+        },
+
+        // 上报测试结果到服务器
+        async reportResults() {
+            if (this.records.length === 0) {
+                    this.log('⚠️ 没有测试结果可上报');
+                return;
+            }
+
+            if (this.reporting) {
+                return;
+            }
+
+            this.reporting = true;
+            this.updateButtons();
+            this.log('📮 上报测试结果...');
+
+            try {
+                const reportData = {
+                    deviceId: 'DGS-100', // 可以从配置中获取
+                    results: this.records.map(record => ({
+                        sn: record.sn,
+                        imei: record.imei,
+                        iccid: record.iccid,
+                        serialTest: record.serial,
+                        webTest: record.web,
+                        overallStatus: record.status
+                    }))
+                };
+
+                const response = await fetch(config.urls.report, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'User-Agent': 'DGS-100-Tester/1.0'
+                    },
+                    body: JSON.stringify(reportData),
+                    signal: AbortSignal.timeout(config.timeouts.report)
+                });
+
+                if (response.ok) {
+                    const responseData = await response.json().catch(() => ({}));
+                    this.log(`✅ 上报成功，响应: ${response.status}`);
+                    
+                    // 更新记录状态为已上报
+                    this.records.forEach(record => {
+                        record.reported = true;
+                        this.addOrUpdateTestResult(record); // 刷新UI显示
+                    });
+                } else {
+                    throw new Error(`服务器响应错误: ${response.status} - ${response.statusText}`);
+                }
+            } catch (error) {
+                let errorMsg = '上报失败';
+                if (error.name === 'TimeoutError') {
+                    errorMsg = '上报超时';
+                } else if (error.name === 'TypeError' && error.message.includes('fetch')) {
+                    errorMsg = '网络连接失败';
+                }
+                
+                this.log(`❌ 结果上报失败: ${error.message}`);
+            } finally {
+                this.reporting = false;
+                this.updateButtons();
             }
         },
         
