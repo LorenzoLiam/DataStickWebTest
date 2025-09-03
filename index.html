@@ -64,14 +64,10 @@
     </div>
 </div>
 
-<div id="deviceStatus" class="panel hidden">
-    <h3>设备状态信息</h3>
-    <div class="grid" id="statusGrid"></div>
-</div>
 
 <div class="panel">
     <table>
-        <thead><tr><th>时间</th><th>SN</th><th>IMEI</th><th>ICCID</th><th>串口通信</th><th>网页访问</th><th>测试结果</th><th>上报状态</th></tr></thead>
+        <thead><tr><th>时间</th><th>SN</th><th>工作电压</th><th>工作电流</th><th>DCDC供电</th><th>WIFI/4G供电</th><th>MCU供电</th><th>网络信号指示灯</th><th>485指示灯</th><th>电源指示灯</th><th>IMEI</th><th>ICCID</th><th>串口通信</th><th>网页访问</th><th>测试结果</th><th>上报状态</th></tr></thead>
         <tbody id="resultBody"></tbody>
     </table>
 </div>
@@ -192,6 +188,11 @@
         currentTestStep: '',
         retryState: {},
         reporting: false,
+        initializing: false,
+        deviceReady: false,
+        currentDeviceStatus: null,
+        previousDeviceState: null,
+        waitingForInitialization: false,
 
         // 在日志框中打印一条带时间戳的日志
         log(msg) {
@@ -253,7 +254,14 @@
             this.updateUI(`${type}Msg`, '⌛ 连接中...');
             const success = await manager.connect(config.baudRates[type]);
             this.updateUI(`${type}Msg`, success ? '✅ 已连接' : '❌ 连接失败', success ? 'success' : 'error');
-            if (success && type === 'status') { this.startStatusReadLoop(); }
+            if (success && type === 'status') { 
+                this.startStatusReadLoop();
+                // 等待状态数据后再进行初始化检查
+                setTimeout(() => {
+                    // 每次点击连接时都进行检查
+                    this.checkAndInitializeDevice();
+                }, 1000);
+            }
             this.updateButtons();
         },
         
@@ -261,7 +269,10 @@
         async disconnect(type) {
             await this[type].disconnect();
             this.updateUI(`${type}Msg`, 'ℹ️ 已断开');
-            if (type === 'status') { ui.deviceStatus.classList.add('hidden'); }
+            if (type === 'status') { 
+                this.deviceReady = false;
+                this.currentDeviceStatus = null;
+            }
             this.updateButtons();
         },
 
@@ -269,10 +280,24 @@
         updateButtons() {
             ui.connectStatusBtn.disabled = !this.status.port || this.status.connected;
             ui.disconnectStatusBtn.disabled = !this.status.connected;
-            const testInProgress = this.testing;
+            const testInProgress = this.testing || this.initializing;
             ui.selectTestBtn.disabled = testInProgress;
-            ui.scanInput.disabled = testInProgress;
+            
+            // SN输入框只有在设备就绪且没有正在测试或初始化时才能使用
+            ui.scanInput.disabled = testInProgress || !this.deviceReady || this.waitingForInitialization;
+            
             ui.saveRecordsBtn.disabled = this.records.length === 0 || testInProgress;
+            
+            // 更新输入框的提示文本
+            if (this.initializing) {
+                ui.scanInput.placeholder = '设备初始化中，请稍候...';
+            } else if (this.waitingForInitialization) {
+                ui.scanInput.placeholder = '等待设备初始化，请将测试架移开...';
+            } else if (!this.deviceReady) {
+                ui.scanInput.placeholder = '设备未就绪，请连接状态串口...';
+            } else {
+                ui.scanInput.placeholder = '请使用扫码枪扫描...';
+            }
         },
 
         // 启动状态监控串口的循环读取
@@ -296,46 +321,163 @@
                 const match = line.match(/^(\w+)[=:]\s*(.+)/);
                 if (match) { parsed[match[1].toLowerCase()] = match[2].trim(); }
             });
-            this.displayStatus(parsed);
+            
+            const previousState = this.currentDeviceStatus?.state;
+            this.currentDeviceStatus = parsed;
+            const currentState = parsed.state;
+            
+            // 检测状态变化
+            if (previousState !== currentState) {
+                this.log(`🔄 设备状态变化: ${previousState || '\u672a\u77e5'} -> ${currentState}`);
+                
+                // 如果从 Ready 变为 Wait，自动开始初始化
+                if (previousState === 'Ready' && currentState === 'Wait') {
+                    this.log('🚀 检测到设备从 Ready 变为 Wait，自动开始初始化...');
+                    this.waitingForInitialization = false;
+                    setTimeout(() => this.initializeDevice(), 500);
+                }
+                // 如果从 Wait 变为 Ready，设备就绪
+                else if (previousState === 'Wait' && currentState === 'Ready') {
+                    this.deviceReady = true;
+                    this.waitingForInitialization = false;
+                    this.updateUI('statusMsg', '✅ 设备初始化完成，可以开始测试', 'success');
+                    this.log('✅ 设备初始化完成，现在可以开始测试');
+                }
+                // 如果状态是 Ready，但之前不是初始化状态
+                else if (currentState === 'Ready') {
+                    this.deviceReady = true;
+                    this.waitingForInitialization = false;
+                }
+                // 如果状态是 Wait
+                else if (currentState === 'Wait') {
+                    this.deviceReady = false;
+                }
+            }
+            
+            this.updateButtons();
         },
 
-        // 将解析后的状态数据显示在UI上
-        displayStatus(data) {
-            ui.deviceStatus.classList.remove('hidden');
-            ui.statusGrid.innerHTML = '';
-            const groups = { '系统状态': [{ key: 'state', label: '状态' }, { key: 'swd', label: 'SWD烧录' }], '电源信息': [{ key: 'vout', label: '工作电压' }, { key: 'iout', label: '工作电流' }, { key: 'pout', label: '工作功耗' }], '模拟输入': [{ key: 'ai0', label: 'DCDC输出' }, { key: 'ai1', label: 'WIFI/4G供电' }, { key: 'ai2', label: 'MCU供电' }], '颜色传感器': [{ key: 'tcs', label: 'TCS状态' }, { key: 'color_r', label: 'R' }, { key: 'color_g', label: 'G' }, { key: 'color_b', label: 'B' }, { key: 'color_c', label: 'C' }] };
-            Object.entries(groups).forEach(([title, items]) => {
-                const panel = createElement('div', { className: 'panel' });
-                panel.appendChild(createElement('h4', { text: title }));
-                items.forEach(item => {
-                    const value = data[item.key] || '-';
-                    const itemDiv = createElement('div', { className: 'status-item' });
-                    itemDiv.appendChild(createElement('span', { text: `${item.label}:` }));
-                    let cls = '';
-                    if (item.key === 'state') cls = data.state === 'Ready' ? 'status-ready' : 'status-wait';
-                    else if (item.key === 'swd' || item.key === 'tcs') cls = data[item.key] === 'ON' ? 'status-on' : 'status-off';
-                    const valueSpan = createElement('span', { text: value, className: `status-value ${cls}` });
-                    itemDiv.appendChild(valueSpan);
-                    panel.appendChild(itemDiv);
-                });
-                if (title === '颜色传感器' && data.color_r && data.color_g && data.color_b) {
-                    const colorPreview = createElement('div', { className: 'color-preview', style: { backgroundColor: `rgb(${data.color_r},${data.color_g},${data.color_b})` } });
-                    panel.appendChild(colorPreview);
+
+        // 检查设备状态并进行初始化
+        async checkAndInitializeDevice() {
+            if (!this.status.connected || !this.currentDeviceStatus) {
+                return;
+            }
+
+            const state = this.currentDeviceStatus.state;
+            if (state === 'Wait') {
+                this.log('🔧 检测到设备处于Wait状态，开始初始化...');
+                await this.initializeDevice();
+            } else if (state === 'Ready') {
+                this.log('⚠️ 设备已处于Ready状态，请先将测试架移开进行初始化');
+                this.updateUI('statusMsg', '⚠️ 请先将测试架移开，等待设备变为Wait状态后自动初始化', 'error');
+                this.deviceReady = false;
+                this.waitingForInitialization = true;
+                this.updateButtons();
+            } else {
+                this.log('⚠️ 设备状态未知：' + state);
+            }
+        },
+
+        // 执行设备初始化命令序列
+        async initializeDevice() {
+            if (this.initializing || !this.status.connected) {
+                return;
+            }
+
+            this.initializing = true;
+            this.deviceReady = false;
+            this.updateButtons();
+            this.updateUI('statusMsg', '🔧 正在初始化设备...');
+
+            try {
+                // 发送初始化命令序列
+                const commands = [
+                    { cmd: 'AT+CAL\r\n', delay: 50, desc: '校准命令' },
+                    { cmd: 'AT+TCS=ON\r\n', delay: 50, desc: '开启TCS传感器' },
+                    { cmd: 'AT+TIME=2000\r\n', delay: 50, desc: '设置时间参数' }
+                ];
+
+                for (const command of commands) {
+                    this.log(`📤 发送${command.desc}: ${command.cmd.trim()}`);
+                    await this.status.writer.write(new TextEncoder().encode(command.cmd));
+                    if (command.delay > 0) {
+                        await new Promise(resolve => setTimeout(resolve, command.delay));
+                    }
                 }
-                ui.statusGrid.appendChild(panel);
-            });
+
+                this.log('✅ 初始化完成，等待设备状态更新...');
+                this.updateUI('statusMsg', '✅ 设备初始化完成，等待状态更新...', 'success');
+                
+                // 不在这里直接设置 deviceReady，等待 parseStatus 中检测到 Ready 状态时再设置
+
+            } catch (error) {
+                this.log(`❌ 初始化失败: ${error.message}`);
+                this.updateUI('statusMsg', '❌ 设备初始化失败', 'error');
+            } finally {
+                this.initializing = false;
+                this.updateButtons();
+            }
+        },
+
+        // 验证设备电压和电流参数
+        validateDeviceParameters(status) {
+            if (!status) return {};
+
+            const vout = parseFloat(status.vout) || 0;
+            const iout = parseFloat(status.iout) || 0;
+            const ai0 = parseFloat(status.ai0) || 0;
+            const ai1 = parseFloat(status.ai1) || 0;
+            const ai2 = parseFloat(status.ai2) || 0;
+
+            return {
+                vout: vout >= 4.9 && vout < 5.1,
+                iout: iout >= 50 && iout < 200,
+                ai0: ai0 >= 3800 && ai0 < 4100,
+                ai1: ai1 >= 3800 && ai1 < 4100,
+                ai2: ai2 >= 3200 && ai2 < 3400,
+                voutValue: vout,
+                ioutValue: iout,
+                ai0Value: ai0,
+                ai1Value: ai1,
+                ai2Value: ai2
+            };
         },
 
         // 开始完整的测试流程
         async startTest(sn) {
-            if (!this.test.port || this.testing || !sn) return;
+            if (!this.test.port || this.testing || !sn || !this.deviceReady) {
+                if (!this.deviceReady) {
+                    this.log('⚠️ 设备未就绪，请先将测试架移开进行初始化');
+                    this.updateUI('testMsg', '⚠️ 请先将测试架移开进行初始化', 'error');
+                }
+                return;
+            }
+            
+            // 验证设备参数
+            const validation = this.validateDeviceParameters(this.currentDeviceStatus);
+            
             this.testing = true;
             this.retryState = {};
             this.updateButtons();
             this.updateUI('testMsg', '⏳ 正在测试...');
             this.clearLog();
             this.log(`🚀 开始测试 SN: ${sn}`);
-            this.addOrUpdateTestResult({ sn });
+            
+            // 创建包含验证结果的测试记录
+            const initialResult = {
+                sn,
+                vout: validation.vout,
+                iout: validation.iout,
+                ai0: validation.ai0,
+                ai1: validation.ai1,
+                ai2: validation.ai2,
+                networkLight: '-',
+                rs485Light: '-',
+                powerLight: '-'
+            };
+            
+            this.addOrUpdateTestResult(initialResult);
 
             this.testTimeout = setTimeout(() => {
                 this.log('⏰ 测试超时');
@@ -515,52 +657,92 @@
 
         // 向表格中新增或更新一条测试记录的UI显示
         addOrUpdateTestResult(partialResult) {
-            const passFail = (val) => val === true ? 'pass' : 'fail';
+            const passFail = (val) => val === true ? 'pass' : (val === false ? 'fail' : 'testing');
             const getTextAndClass = (val) => { if (val === true) return { text: '正常', className: 'pass' }; if (val === false) return { text: '异常', className: 'fail' }; return { text: '测试中...', className: 'testing' }; };
             let record = this.records.find(r => r.sn === partialResult.sn);
 
             if (!record) {
-                record = { sn: partialResult.sn, timestamp: Date.now(), imei: '-', iccid: '-', serial: 'pending', web: 'pending', status: 'pending', row: ui.resultBody.insertRow(0), snMismatch: false, snMatch: false, reported: false };
+                record = { 
+                    sn: partialResult.sn, timestamp: Date.now(), 
+                    imei: '-', iccid: '-', 
+                    vout: 'pending', iout: 'pending', ai0: 'pending', ai1: 'pending', ai2: 'pending',
+                    networkLight: '-', rs485Light: '-', powerLight: '-',
+                    serial: 'pending', web: 'pending', status: 'pending', 
+                    row: ui.resultBody.insertRow(0), snMismatch: false, snMatch: false, reported: false 
+                };
                 this.records.unshift(record);
-                for (let i = 0; i < 8; i++) record.row.insertCell(); // 增加一列用于上报状态
+                for (let i = 0; i < 16; i++) record.row.insertCell(); // 16列：时间、SN、IMEI、ICCID、5个电压电流、3个指示灯、串口、网页、结果、上报
             }
 
             Object.assign(record, partialResult);
-            const { row, timestamp, sn, imei, iccid, serial, web, status } = record;
+            const { row, timestamp, sn, imei, iccid, vout, iout, ai0, ai1, ai2, networkLight, rs485Light, powerLight, serial, web, status } = record;
             if (!row) return;
 
+            // 填充表格单元格 - 新的列顺序：时间、SN、电压电流检测(5个)、指示灯(3个)、IMEI、ICCID、串口、网页、结果、上报
             row.cells[0].textContent = new Date(timestamp).toLocaleString();
             row.cells[1].textContent = sn;
             row.cells[1].className = record.snMismatch ? 'fail' : (record.snMatch ? 'pass' : '');
-            row.cells[2].textContent = imei;
-            row.cells[2].className = imei !== '-' ? 'pass' : (record.imeiFailed || status !== 'pending' ? 'fail' : '');
-            row.cells[3].textContent = iccid;
-            row.cells[3].className = iccid !== '-' ? 'pass' : (record.iccidFailed || status !== 'pending' ? 'fail' : '');
+            
+            // 电压电流检测结果
+            const voutStatus = getTextAndClass(vout);
+            row.cells[2].textContent = voutStatus.text;
+            row.cells[2].className = voutStatus.className;
+            
+            const ioutStatus = getTextAndClass(iout);
+            row.cells[3].textContent = ioutStatus.text;
+            row.cells[3].className = ioutStatus.className;
+            
+            const ai0Status = getTextAndClass(ai0);
+            row.cells[4].textContent = ai0Status.text;
+            row.cells[4].className = ai0Status.className;
+            
+            const ai1Status = getTextAndClass(ai1);
+            row.cells[5].textContent = ai1Status.text;
+            row.cells[5].className = ai1Status.className;
+            
+            const ai2Status = getTextAndClass(ai2);
+            row.cells[6].textContent = ai2Status.text;
+            row.cells[6].className = ai2Status.className;
+            
+            // 指示灯状态
+            row.cells[7].textContent = networkLight;
+            row.cells[8].textContent = rs485Light;
+            row.cells[9].textContent = powerLight;
+            
+            // IMEI和ICCID
+            row.cells[10].textContent = imei;
+            row.cells[10].className = imei !== '-' ? 'pass' : (record.imeiFailed || status !== 'pending' ? 'fail' : '');
+            row.cells[11].textContent = iccid;
+            row.cells[11].className = iccid !== '-' ? 'pass' : (record.iccidFailed || status !== 'pending' ? 'fail' : '');
+            
+            // 串口和网页测试
             const serialStatus = getTextAndClass(serial);
-            row.cells[4].textContent = serialStatus.text;
-            row.cells[4].className = serialStatus.className;
+            row.cells[12].textContent = serialStatus.text;
+            row.cells[12].className = serialStatus.className;
+            
             const webStatus = getTextAndClass(web);
-            row.cells[5].textContent = webStatus.text;
-            row.cells[5].className = webStatus.className;
+            row.cells[13].textContent = webStatus.text;
+            row.cells[13].className = webStatus.className;
 
+            // 最终结果
             if (status !== 'pending') {
-                row.cells[6].textContent = status;
-                row.cells[6].className = passFail(status === '通过');
+                row.cells[14].textContent = status;
+                row.cells[14].className = passFail(status === '通过');
             } else {
-                row.cells[6].textContent = '测试中...';
-                row.cells[6].className = 'testing';
+                row.cells[14].textContent = '测试中...';
+                row.cells[14].className = 'testing';
             }
 
             // 更新上报状态列
             if (record.reported) {
-                row.cells[7].textContent = '已上报';
-                row.cells[7].className = 'pass';
+                row.cells[15].textContent = '已上报';
+                row.cells[15].className = 'pass';
             } else if (status !== 'pending') {
-                row.cells[7].textContent = '待上报';
-                row.cells[7].className = 'testing';
+                row.cells[15].textContent = '待上报';
+                row.cells[15].className = 'testing';
             } else {
-                row.cells[7].textContent = 'pending';
-                row.cells[7].className = '';
+                row.cells[15].textContent = 'pending';
+                row.cells[15].className = '';
             }
         },
 
@@ -632,8 +814,15 @@
         // 将所有测试记录保存为CSV文件
         saveRecords() {
             if (this.records.length === 0) { alert('没有测试记录可供保存。'); return; }
-            const header = ['时间', 'SN', 'IMEI', 'ICCID', '串口通信', '网页访问', '测试结果'];
-            const rows = this.records.map(r => [new Date(r.timestamp).toLocaleString('zh-CN'), r.sn, r.imei, r.iccid, r.serial === true ? '正常' : '异常', r.web === true ? '正常' : '异常', r.status]);
+            const header = ['时间', 'SN', 'IMEI', 'ICCID', '工作电压', '工作电流', 'DCDC供电', 'WIFI/4G供电', 'MCU供电', '网络信号指示灯', '485指示灯', '电源指示灯', '串口通信', '网页访问', '测试结果'];
+            const formatResult = (val) => val === true ? '正常' : (val === false ? '异常' : val);
+            const rows = this.records.map(r => [
+                new Date(r.timestamp).toLocaleString('zh-CN'), r.sn, r.imei, r.iccid,
+                formatResult(r.vout), formatResult(r.iout), formatResult(r.ai0), 
+                formatResult(r.ai1), formatResult(r.ai2), 
+                r.networkLight, r.rs485Light, r.powerLight,
+                formatResult(r.serial), formatResult(r.web), r.status
+            ]);
             const csvContent = [header, ...rows].map(row => row.join(',')).join('\n');
             const blob = new Blob([`\uFEFF${csvContent}`], { type: 'text/csv;charset=utf-8;' });
             const link = document.createElement('a');
