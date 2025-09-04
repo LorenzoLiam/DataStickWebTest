@@ -760,9 +760,10 @@
             if (testUrl) {
                 UIManager.log(`🌐 测试网址: ${testUrl}`);
                 try {
+                    const proxiedUrl = `https://cors.lorenzoliam.workers.dev/?url=${encodeURIComponent(testUrl)}`;
                     const controller = new AbortController();
                     const timeoutId = setTimeout(() => controller.abort(), config.timeouts.fetch);
-                    const response = await fetch(testUrl, { signal: controller.signal, mode: 'cors', cache: 'no-cache' });
+                    const response = await fetch(proxiedUrl, { signal: controller.signal, mode: 'cors', cache: 'no-cache' });
                     clearTimeout(timeoutId);
                     if (response.ok) {
                         UIManager.log('✅ 网络访问成功');
