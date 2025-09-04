@@ -24,11 +24,11 @@
         .status-wait { color: #ffc107; }
         .status-on { color: #28a745; }
         .status-off { color: #6c757d; }
-        table { border-collapse: collapse; width: 100%; margin: 20px 0; background-color: #fff; }
+        table { border-collapse: collapse; width: 100%; margin: 20px 0; background-color: #fff; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
         th, td { border: 1px solid #ddd; padding: 10px; text-align: center; }
-        th { background-color: #f8f8f8; }
-        .pass { background-color: #d4edda; color: #155724; }
-        .fail { background-color: #f8d7da; color: #721c24; }
+        th { background-color: #f8f9fa; color: #495057; font-weight: 600; }
+        .pass { background-color: #d1f2d1; color: #28a745; }
+        .fail { background-color: #f8d7da; color: #dc3545; }
         .testing { background-color: #fff3cd; color: #856404; }
         #logBox { margin: 10px 0; padding: 10px; border: 1px solid #ddd; height: 160px; overflow-y: auto; background: #f9f9f9; color: #333; font-family: monospace; white-space: pre-wrap; word-break: break-all; border-radius: 4px; }
         .color-preview { width: 100%; height: 30px; border: 1px solid #ddd; margin-top: 10px; border-radius: 4px; }
@@ -92,6 +92,10 @@
             led: 2000,      // LED测试超时
             fetch: 5000,    // 网络访问超时
             report: 10000   // 上报超时
+        },
+        sampling: {
+            count: 4,       // 采样次数
+            interval: 500   // 采样间隔(ms)
         },
         autoReport: true // 自动上报所有测试结果
     };
@@ -210,6 +214,31 @@
             const timestamp = new Date().toLocaleTimeString();
             ui.logBox.textContent += `\n[${timestamp}] ${msg}`;
             ui.logBox.scrollTop = ui.logBox.scrollHeight;
+        },
+
+        // 多次采样去掉最大最小值取平均值的工具函数
+        async getAverageValue(sampleFunction, sampleCount = null, interval = null) {
+            const count = sampleCount || config.sampling.count;
+            const delayMs = interval || config.sampling.interval;
+            
+            const samples = [];
+            for (let i = 0; i < count; i++) {
+                const value = await sampleFunction();
+                samples.push(value);
+                if (i < count - 1) {
+                    await new Promise(resolve => setTimeout(resolve, delayMs));
+                }
+            }
+            
+            // 排序后去掉最大最小值
+            samples.sort((a, b) => a - b);
+            if (samples.length <= 2) return samples[0]; // 如果样本太少直接返回
+            
+            const validSamples = samples.slice(1, -1); // 去掉首尾（最小最大值）
+            const average = validSamples.reduce((sum, val) => sum + val, 0) / validSamples.length;
+            
+            this.log(`📊 ${count}次采样数据: [${samples.join(', ')}]`);
+            return average;
         },
 
         // 清空日志框
@@ -372,7 +401,7 @@
             
             // 检测状态变化
             if (previousState !== currentState) {
-                this.log(`🔄 设备状态变化: ${previousState || '\u672a\u77e5'} -> ${currentState}`);
+                //this.log(`🔄 设备状态变化: ${previousState || '\u672a\u77e5'} -> ${currentState}`);
                 
                 // 如果从 Ready 变为 Wait，自动开始初始化
                 if (previousState === 'Ready' && currentState === 'Wait') {
@@ -439,9 +468,9 @@
                 this.clearSerialBuffer('status');
                 
                 const commands = [
-                    { cmd: 'AT+CAL\r\n', delay: 50, desc: '校准命令' },
-                    { cmd: 'AT+TCS=ON\r\n', delay: 50, desc: '开启TCS传感器' },
-                    { cmd: 'AT+TIME=1000\r\n', delay: 50, desc: '设置时间参数' }
+                    { cmd: 'AT+CAL\r\n', delay: 100, desc: '校准命令' },
+                    { cmd: 'AT+TCS=ON\r\n', delay: 100, desc: '开启TCS传感器' },
+                    { cmd: 'AT+TIME=500\r\n', delay: 100, desc: '设置时间参数' }
                 ];
 
                 for (const command of commands) {
@@ -454,8 +483,6 @@
 
                 this.log('✅ 初始化完成，请合上测试架开进行测试...');
                 this.updateUI('statusMsg', '✅ 设备初始化完成，请合上测试架开进行测试...', 'success');
-                
-                // 不在这里直接设置 deviceReady，等待 parseStatus 中检测到 Ready 状态时再设置
 
             } catch (error) {
                 this.log(`❌ 初始化失败: ${error.message}`);
@@ -466,10 +493,36 @@
             }
         },
 
-        // 验证设备电压和电流参数
-        validateDeviceParameters(status) {
-            if (!status) return {};
+        // 验证设备电压和电流参数 - 使用4次采样取平均值
+        async validateDeviceParameters(status = null) {
+            // 如果没有传入status，使用当前设备状态进行4次采样
+            if (!status && this.currentDeviceStatus) {
+                //this.log('🔄 开始电压电流4次采样...');
+                
+                // 为每个参数进行4次采样
+                const vout = await this.getAverageValue(() => parseFloat(this.currentDeviceStatus.vout) || 0);
+                const iout = await this.getAverageValue(() => parseFloat(this.currentDeviceStatus.iout) || 0);
+                const ai0 = await this.getAverageValue(() => parseFloat(this.currentDeviceStatus.ai0) || 0);
+                const ai1 = await this.getAverageValue(() => parseFloat(this.currentDeviceStatus.ai1) || 0);
+                const ai2 = await this.getAverageValue(() => parseFloat(this.currentDeviceStatus.ai2) || 0);
 
+                return {
+                    vout: vout >= 4.9 && vout < 5.1,
+                    iout: iout >= 50 && iout < 200,
+                    ai0: ai0 >= 3800 && ai0 < 4100,
+                    ai1: ai1 >= 3800 && ai1 < 4100,
+                    ai2: ai2 >= 3200 && ai2 < 3400,
+                    voutValue: vout,
+                    ioutValue: iout,
+                    ai0Value: ai0,
+                    ai1Value: ai1,
+                    ai2Value: ai2
+                };
+            }
+
+            // 兼容原有的单次采样模式（用于历史数据）
+            if (!status) return {};
+            
             const vout = parseFloat(status.vout) || 0;
             const iout = parseFloat(status.iout) || 0;
             const ai0 = parseFloat(status.ai0) || 0;
@@ -500,9 +553,6 @@
                 return;
             }
             
-            // 验证设备参数
-            const validation = this.validateDeviceParameters(this.currentDeviceStatus);
-            
             this.testing = true;
             this.retryState = {};
             this.stepRetryCount = {};
@@ -511,17 +561,17 @@
             this.clearLog();
             this.log(`🚀 开始测试 SN: ${sn}`);
             
-            // 创建包含验证结果的测试记录
+            // 创建初始测试记录（不包含验证结果，等待后续采样）
             const initialResult = {
                 sn,
-                vout: validation.vout,
-                iout: validation.iout,
-                ai0: validation.ai0,
-                ai1: validation.ai1,
-                ai2: validation.ai2,
-                networkLight: '-',
-                rs485Light: '-',
-                powerLight: '-'
+                vout: 'pending',
+                iout: 'pending', 
+                ai0: 'pending',
+                ai1: 'pending',
+                ai2: 'pending',
+                networkLight: '待测试',
+                rs485Light: '待测试',
+                powerLight: '待测试'
             };
             
             this.addOrUpdateTestResult(initialResult);
@@ -560,10 +610,9 @@
                 try {
                     // DSN 响应处理
                     if (this.currentTestStep === 'WAITING_FOR_DSN') {
-                        // 等待接收到换行符或足够长的数据再处理，避免SN被截断 (DSN; + 20位SN = 24字符)
-                        if (this.test.buffer.includes('\n') || this.test.buffer.includes('\r') || 
-                            (this.test.buffer.includes('DSN;') && this.test.buffer.length >= 24)) {
-                            const match = this.test.buffer.match(/DSN;(\S+)/);
+                        // 只在接收到完整的换行符结束的响应时才处理
+                        if (this.test.buffer.includes('\n') || this.test.buffer.includes('\r')) {
+                            const match = this.test.buffer.match(/DSN;(\S+?)[\r\n]/);
                             if (match) {
                                 this.processingData = true;
                                 const receivedValue = match[1].trim();
@@ -616,10 +665,9 @@
                     }
                     // IMEI 响应处理
                     else if (this.currentTestStep === 'WAITING_FOR_IMEI') {
-                        // 等待接收到换行符或足够长的数据再处理，避免IMEI被截断 (IME; + 15位IMEI = 19字符)
-                        if (this.test.buffer.includes('\n') || this.test.buffer.includes('\r') || 
-                            (this.test.buffer.includes('IME;') && this.test.buffer.length >= 19)) {
-                            const match = this.test.buffer.match(/IME;(\S+)/);
+                        // 只在接收到完整的换行符结束的响应时才处理
+                        if (this.test.buffer.includes('\n') || this.test.buffer.includes('\r')) {
+                            const match = this.test.buffer.match(/IME;(\S+?)[\r\n]/);
                             if (match) {
                                 this.processingData = true;
                                 const receivedValue = match[1].trim();
@@ -633,7 +681,7 @@
                             
                                 if (receivedValue.toLowerCase() === 'error') {
                                     this.log(`❌ 收到 IME ERROR`);
-                                    this.addOrUpdateTestResult({ sn: expectedSN, imei: '-', imeiFailed: true });
+                                    this.addOrUpdateTestResult({ sn: expectedSN, imei: '待测试', imeiFailed: true });
                                 } else {
                                     this.log(`✅ 收到 IME: ${receivedValue}`);
                                     this.addOrUpdateTestResult({ sn: expectedSN, imei: receivedValue });
@@ -647,10 +695,9 @@
                     }
                     // ICCID 响应处理
                     else if (this.currentTestStep === 'WAITING_FOR_ICCID') {
-                        // 等待接收到换行符或足够长的数据再处理，避免ICCID被截断 (ICC; + 20位ICCID = 24字符)
-                        if (this.test.buffer.includes('\n') || this.test.buffer.includes('\r') || 
-                            (this.test.buffer.includes('ICC;') && this.test.buffer.length >= 24)) {
-                            const match = this.test.buffer.match(/ICC;(\S+)/);
+                        // 只在接收到完整的换行符结束的响应时才处理
+                        if (this.test.buffer.includes('\n') || this.test.buffer.includes('\r')) {
+                            const match = this.test.buffer.match(/ICC;(\S+?)[\r\n]/);
                             if (match) {
                                 this.processingData = true;
                                 const receivedValue = match[1].trim();
@@ -664,7 +711,7 @@
                             
                                 if (receivedValue.toLowerCase() === 'error') {
                                     this.log(`❌ 收到 ICC ERROR`);
-                                    this.addOrUpdateTestResult({ sn: expectedSN, iccid: '-', iccidFailed: true });
+                                    this.addOrUpdateTestResult({ sn: expectedSN, iccid: '待测试', iccidFailed: true });
                                 } else {
                                     this.log(`✅ 收到 ICC: ${receivedValue}`);
                                     this.addOrUpdateTestResult({ sn: expectedSN, iccid: receivedValue });
@@ -784,18 +831,41 @@
         // 开始 LED 和电子元件测试序列
         async startLedAndComponentTests(sn) {
             this.currentTestStep = 'COMPONENT_TESTS';
-            this.log('🔍 串口通信完成，开始电子元件检测...');
+
+            // 工作电压测试
+            this.log('⚡ 测试工作电压...');
+            const vout = await this.getAverageValue(() => parseFloat(this.currentDeviceStatus?.vout) || 0);
+            const voutPass = vout >= 4.9 && vout < 5.1;
+            this.log(`📊 工作电压: ${vout.toFixed(3)}V, 结果: ${voutPass ? '正常' : '异常'}`);
+            this.addOrUpdateTestResult({ sn, vout: voutPass });
             
-            // 检测电子元件参数
-            const validation = this.validateDeviceParameters(this.currentDeviceStatus);
-            this.addOrUpdateTestResult({ 
-                sn, 
-                vout: validation.vout, 
-                iout: validation.iout, 
-                ai0: validation.ai0, 
-                ai1: validation.ai1, 
-                ai2: validation.ai2 
-            });
+            // 工作电流测试
+            this.log('⚡ 测试工作电流...');
+            const iout = await this.getAverageValue(() => parseFloat(this.currentDeviceStatus?.iout) || 0);
+            const ioutPass = iout >= 50 && iout < 200;
+            this.log(`📊 工作电流: ${iout.toFixed(3)}mA, 结果: ${ioutPass ? '正常' : '异常'}`);
+            this.addOrUpdateTestResult({ sn, iout: ioutPass });
+            
+            // DCDC供电测试
+            this.log('⚡ 测试DCDC供电...');
+            const ai0 = await this.getAverageValue(() => parseFloat(this.currentDeviceStatus?.ai0) || 0);
+            const ai0Pass = ai0 >= 3800 && ai0 < 4100;
+            this.log(`📊 DCDC供电: ${ai0.toFixed(3)}mV, 结果: ${ai0Pass ? '正常' : '异常'}`);
+            this.addOrUpdateTestResult({ sn, ai0: ai0Pass });
+            
+            // 网络供电测试
+            this.log('⚡ 测试网络供电...');
+            const ai1 = await this.getAverageValue(() => parseFloat(this.currentDeviceStatus?.ai1) || 0);
+            const ai1Pass = ai1 >= 3800 && ai1 < 4100;
+            this.log(`📊 网络供电: ${ai1.toFixed(3)}mV, 结果: ${ai1Pass ? '正常' : '异常'}`);
+            this.addOrUpdateTestResult({ sn, ai1: ai1Pass });
+            
+            // MCU供电测试
+            this.log('⚡ 测试MCU供电...');
+            const ai2 = await this.getAverageValue(() => parseFloat(this.currentDeviceStatus?.ai2) || 0);
+            const ai2Pass = ai2 >= 3200 && ai2 < 3400;
+            this.log(`📊 MCU供电: ${ai2.toFixed(3)}mV, 结果: ${ai2Pass ? '正常' : '异常'}`);
+            this.addOrUpdateTestResult({ sn, ai2: ai2Pass });
             
             // 开始LED测试
             this.startLedTests(sn);
@@ -807,7 +877,7 @@
             this.log('🔍 开始 LED 指示灯测试...');
             
             // 步骤1: 发送 ccmd LED;6;0 并等待 20ms
-            await this.sendLedCommand('ccmd LED;6;0\r\n', 20);
+            await this.sendLedCommand('ccmd LED;6;0\r\n', 50);
             
             // 电源指示灯测试（检查 Color_R > 26）
             setTimeout(() => this.testPowerLight(sn), 1000);
@@ -826,52 +896,70 @@
             }
         },
         
-        // 测试电源指示灯
+        // 测试电源指示灯 - 4次采样取平均
         async testPowerLight(sn) {
             this.log('💡 测试电源指示灯...');
-            const colorR = this.getCurrentColorR(); // 获取最新值
+            
+            // 4次采样取平均值
+            const colorR = await this.getAverageValue(() => {
+                if (this.currentDeviceStatus && this.currentDeviceStatus.color_r) {
+                    return parseFloat(this.currentDeviceStatus.color_r) || 0;
+                }
+                return this.currentColorR || 0;
+            });
+            
             const powerLightPass = colorR > 26;
             
-            this.log(`📊 当前 Color_R 值: ${colorR}, 电源指示灯: ${powerLightPass ? '正常' : '异常'}`);
+            this.log(`📊 电源指示灯 Color_R 平均值: ${colorR.toFixed(3)}, 结果: ${powerLightPass ? '正常' : '异常'}`);
             this.addOrUpdateTestResult({ sn, powerLight: powerLightPass ? '正常' : '异常' });
             
-            // 等待 20ms 然后测试 485 指示灯
+            // 等待然后测试 485 指示灯
             setTimeout(() => this.test485Light(sn), 1000);
         },
         
-        // 测试 485 指示灯
+        // 测试 485 指示灯 - 4次采样取平均
         async test485Light(sn) {
             this.log('💡 测试 485 指示灯...');
             
             // 发送 ccmd LED;3;1
-            await this.sendLedCommand('ccmd LED;3;1\r\n', 20);
+            await this.sendLedCommand('ccmd LED;3;1\r\n', 50);
             
-            // 等待一下让状态更新，然后获取最新Color_R值
-            setTimeout(() => {
-                const colorR = this.getCurrentColorR(); // 获取最新值
+            // 等待一下让状态更新，然后4次采样取平均值
+            setTimeout(async () => {
+                const colorR = await this.getAverageValue(() => {
+                    if (this.currentDeviceStatus && this.currentDeviceStatus.color_r) {
+                        return parseFloat(this.currentDeviceStatus.color_r) || 0;
+                    }
+                    return this.currentColorR || 0;
+                });
                 const rs485LightPass = (colorR / 2) > 26;
                 
-                this.log(`📊 当前 Color_R 值: ${colorR}, Color_R/2 = ${colorR/2}, 485指示灯: ${rs485LightPass ? '正常' : '异常'}`);
+                this.log(`📊 485指示灯 平均值: ${colorR.toFixed(3)}, 结果: ${rs485LightPass ? '正常' : '异常'}`);
                 this.addOrUpdateTestResult({ sn, rs485Light: rs485LightPass ? '正常' : '异常' });
                 
-                // 等待 20ms 然后测试网络信号指示灯
+                // 等待然后测试网络信号指示灯
                 setTimeout(() => this.testNetworkLight(sn), 20);
             }, 1000); // 给LED命令一些时间生效
         },
         
-        // 测试网络信号指示灯
+        // 测试网络信号指示灯 - 4次采样取平均
         async testNetworkLight(sn) {
             this.log('💡 测试网络信号指示灯...');
             
             // 发送 ccmd LED;4;1
-            await this.sendLedCommand('ccmd LED;4;1\r\n', 20);
+            await this.sendLedCommand('ccmd LED;4;1\r\n', 50);
             
-            // 等待一下让状态更新，然后获取最新Color_R值
-            setTimeout(() => {
-                const colorR = this.getCurrentColorR(); // 获取最新值
+            // 等待一下让状态更新，然后4次采样取平均值
+            setTimeout(async () => {
+                const colorR = await this.getAverageValue(() => {
+                    if (this.currentDeviceStatus && this.currentDeviceStatus.color_r) {
+                        return parseFloat(this.currentDeviceStatus.color_r) || 0;
+                    }
+                    return this.currentColorR || 0;
+                });
                 const networkLightPass = (colorR / 3) > 26;
                 
-                this.log(`📊 当前 Color_R 值: ${colorR}, Color_R/3 = ${(colorR/3).toFixed(2)}, 网络信号指示灯: ${networkLightPass ? '正常' : '异常'}`);
+                this.log(`📊 网络指示灯 平均值: ${colorR.toFixed(3)}, 结果: ${networkLightPass ? '正常' : '异常'}`);
                 this.addOrUpdateTestResult({ sn, networkLight: networkLightPass ? '正常' : '异常' });
                 
                 // LED 测试完成，发送 AT+RST
@@ -881,7 +969,7 @@
         
         // 开始 IMEI 和 ICCID 测试
         async startImeiIccidTests(sn) {
-            this.log('📋 开始获取 IMEI 和 ICCID...');
+            //this.log('📋 开始获取 IMEI 和 ICCID...');
             this.currentTestStep = 'WAITING_FOR_IMEI';
             
             // 发送 IMEI 查询命令
@@ -903,13 +991,13 @@
                         // 重新设置超时
                         this.setStepTimeout('WAITING_FOR_IMEI', () => {
                             this.log(`⏰ IMEI响应最终超时，跳过到 ICCID`);
-                            this.addOrUpdateTestResult({ sn, imei: '-', imeiFailed: true });
+                            this.addOrUpdateTestResult({ sn, imei: '待测试', imeiFailed: true });
                             this.startIccidTest(sn);
                         }, config.timeouts.imei);
                     }, () => {
                         // 最终失败
                         this.log(`⏰ IMEI响应最终超时，跳过到 ICCID`);
-                        this.addOrUpdateTestResult({ sn, imei: '-', imeiFailed: true });
+                        this.addOrUpdateTestResult({ sn, imei: '待测试', imeiFailed: true });
                         this.startIccidTest(sn);
                     });
                 }, config.timeouts.imei);
@@ -922,7 +1010,7 @@
         
         // 开始 ICCID 测试
         async startIccidTest(sn) {
-            this.log('📋 开始获取 ICCID...');
+            //this.log('📋 开始获取 ICCID...');
             this.currentTestStep = 'WAITING_FOR_ICCID';
             
             try {
@@ -943,13 +1031,13 @@
                         // 重新设置超时
                         this.setStepTimeout('WAITING_FOR_ICCID', () => {
                             this.log(`⏰ ICCID响应最终超时，继续后续测试`);
-                            this.addOrUpdateTestResult({ sn, iccid: '-', iccidFailed: true });
+                            this.addOrUpdateTestResult({ sn, iccid: '待测试', iccidFailed: true });
                             this.startLedAndComponentTests(sn);
                         }, config.timeouts.iccid);
                     }, () => {
                         // 最终失败
                         this.log(`⏰ ICCID响应最终超时，继续后续测试`);
-                        this.addOrUpdateTestResult({ sn, iccid: '-', iccidFailed: true });
+                        this.addOrUpdateTestResult({ sn, iccid: '待测试', iccidFailed: true });
                         this.startLedAndComponentTests(sn);
                     });
                 }, config.timeouts.iccid);
@@ -962,7 +1050,7 @@
         
         // 开始网络测试
         async startWebTest(sn) {
-            this.log('🔗 开始网络连接测试...');
+            //this.log('🔗 开始网络连接测试...');
             this.updateUI('testMsg', '🔗 正在测试网络连接...');
             const webResult = await this.testWebConnection(sn);
             
@@ -1003,7 +1091,7 @@
             this.stepRetryCount = {};
             this.currentTestStep = 'DONE'; // 标记状态机结束，防止超时后仍处理串口消息
 
-            const finalResult = { sn: result.sn || this.currentTestingSN || ui.scanInput.value, imei: result.imei || '-', iccid: result.iccid || '-', serial: result.serial, web: result.web, status: result.serial && result.web ? '正常' : '不通过' };
+            const finalResult = { sn: result.sn || this.currentTestingSN || ui.scanInput.value, imei: result.imei || '待测试', iccid: result.iccid || '待测试', serial: result.serial, web: result.web, status: result.serial && result.web ? '正常' : '不通过' };
             this.addOrUpdateTestResult(finalResult);
 
             this.log(`📊 测试完成: ${finalResult.status}`);
@@ -1040,9 +1128,9 @@
             if (!record) {
                 record = { 
                     sn: partialResult.sn, timestamp: Date.now(), 
-                    imei: '-', iccid: '-', 
+                    imei: '待测试', iccid: '待测试', 
                     vout: 'pending', iout: 'pending', ai0: 'pending', ai1: 'pending', ai2: 'pending',
-                    networkLight: '-', rs485Light: '-', powerLight: '-',
+                    networkLight: '待测试', rs485Light: '待测试', powerLight: '待测试',
                     serial: 'pending', web: 'pending', status: 'pending', 
                     row: ui.resultBody.insertRow(0), snMismatch: false, snMatch: false, reported: false 
                 };
@@ -1060,13 +1148,13 @@
                     record.web = 'pending';
                     record.status = 'pending';
                     record.reported = false;
-                    record.imei = '-';
-                    record.iccid = '-';
+                    record.imei = '待测试';
+                    record.iccid = '待测试';
                     record.imeiFailed = false;
                     record.iccidFailed = false;
-                    record.networkLight = '-';
-                    record.rs485Light = '-';
-                    record.powerLight = '-';
+                    record.networkLight = '待测试';
+                    record.rs485Light = '待测试';
+                    record.powerLight = '待测试';
                     record.vout = 'pending';
                     record.iout = 'pending';
                     record.ai0 = 'pending';
@@ -1092,14 +1180,14 @@
             cellIndex++;
             
             // 2-3. IMEI和ICCID
-            const imeiText = imei === '-' ? '待测试' : imei;
+            const imeiText = (imei === '待测试' || imei === '-') ? '待测试' : imei;
             row.cells[cellIndex].textContent = imeiText;
-            row.cells[cellIndex].className = imei !== '-' ? 'pass' : (record.imeiFailed ? 'fail' : '');
+            row.cells[cellIndex].className = (imeiText !== '待测试') ? 'pass' : (record.imeiFailed ? 'fail' : '');
             cellIndex++;
             
-            const iccidText = iccid === '-' ? '待测试' : iccid;
+            const iccidText = (iccid === '待测试' || iccid === '-') ? '待测试' : iccid;
             row.cells[cellIndex].textContent = iccidText;
-            row.cells[cellIndex].className = iccid !== '-' ? 'pass' : (record.iccidFailed ? 'fail' : '');
+            row.cells[cellIndex].className = (iccidText !== '待测试') ? 'pass' : (record.iccidFailed ? 'fail' : '');
             cellIndex++;
             
             // 4. 串口通信 (DSN测试)
@@ -1135,17 +1223,17 @@
             cellIndex++;
             
             // 10-12. 指示灯状态 (按测试顺序：电源、485、网络)
-            const powerLightText = powerLight === '-' ? '待测试' : powerLight;
+            const powerLightText = (powerLight === '-' || powerLight === '待测试') ? '待测试' : powerLight;
             row.cells[cellIndex].textContent = powerLightText;
             row.cells[cellIndex].className = getStringStatusClass(powerLightText);
             cellIndex++;
             
-            const rs485LightText = rs485Light === '-' ? '待测试' : rs485Light;
+            const rs485LightText = (rs485Light === '-' || rs485Light === '待测试') ? '待测试' : rs485Light;
             row.cells[cellIndex].textContent = rs485LightText;
             row.cells[cellIndex].className = getStringStatusClass(rs485LightText);
             cellIndex++;
             
-            const networkLightText = networkLight === '-' ? '待测试' : networkLight;
+            const networkLightText = (networkLight === '-' || networkLight === '待测试') ? '待测试' : networkLight;
             row.cells[cellIndex].textContent = networkLightText;
             row.cells[cellIndex].className = getStringStatusClass(networkLightText);
             cellIndex++;
