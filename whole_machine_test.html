@@ -1,0 +1,643 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <title>整机测试</title>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; padding: 20px; background-color: #f4f7f6; color: #333; line-height: 1.6; }
+        .btn { margin: 5px; padding: 8px 15px; border: 1px solid #ccc; border-radius: 4px; cursor: pointer; background-color: #fff; transition: background-color 0.2s, box-shadow 0.2s; }
+        .btn:hover:not(:disabled) { background-color: #e9e9e9; box-shadow: 0 1px 2px rgba(0,0,0,0.1); }
+        .btn:disabled { opacity: 0.6; cursor: not-allowed; background-color: #f0f0f0; }
+        .panel { border: 1px solid #ddd; border-radius: 8px; padding: 15px; margin: 10px 0; background-color: #fff; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
+        .panel-blue { border-color: #007bff; background: #f0f8ff; }
+        .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 15px; }
+        table { border-collapse: collapse; width: 100%; margin: 20px 0; background-color: #fff; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
+        th, td { border: 1px solid #ddd; padding: 10px; text-align: center; }
+        th { background-color: #f8f9fa; color: #495057; font-weight: 600; }
+        .pass { background-color: #d1f2d1; color: #28a745; }
+        .fail { background-color: #f8d7da; color: #dc3545; }
+        .testing { background-color: #fff3cd; color: #856404; }
+        #logBox { margin: 10px 0; padding: 10px; border: 1px solid #ddd; height: 160px; overflow-y: auto; background: #f9f9f9; color: #333; font-family: monospace; white-space: pre-wrap; word-break: break-all; border-radius: 4px; }
+        .table-container { max-height: 520px; overflow-y: auto; }
+    </style>
+</head>
+<body>
+<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+    <h1>整机测试</h1>
+    <button class="btn" id="switchInterfaceBtn" style="background-color: #28a745; color: white; font-weight: bold;">切换到单板测试</button>
+</div>
+
+<div class="panel">
+    <div class="grid">
+        <div class="panel panel-blue">
+            <h4>设备1</h4>
+            <div style="display: flex; align-items: center; gap: 10px;">
+                <button class="btn" id="selectDevice1Btn">选择串口</button>
+                <button class="btn" id="connectDevice1Btn">连接</button>
+                <div id="device1Msg"></div>
+            </div>
+        </div>
+        <div class="panel panel-blue">
+            <h4>设备2</h4>
+            <div style="display: flex; align-items: center; gap: 10px;">
+                <button class="btn" id="selectDevice2Btn">选择串口</button>
+                <button class="btn" id="connectDevice2Btn">连接</button>
+                <div id="device2Msg"></div>
+            </div>
+        </div>
+        <div class="panel panel-blue">
+            <h4>设备3</h4>
+            <div style="display: flex; align-items: center; gap: 10px;">
+                <button class="btn" id="selectDevice3Btn">选择串口</button>
+                <button class="btn" id="connectDevice3Btn">连接</button>
+                <div id="device3Msg"></div>
+            </div>
+        </div>
+        <div class="panel panel-blue">
+            <h4>设备4</h4>
+            <div style="display: flex; align-items: center; gap: 10px;">
+                <button class="btn" id="selectDevice4Btn">选择串口</button>
+                <button class="btn" id="connectDevice4Btn">连接</button>
+                <div id="device4Msg"></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="panel">
+    <div class="table-container">
+        <table>
+                <button class="btn" id="saveRecordsBtn">保存记录到CSV</button>
+            <thead><tr><th>时间</th><th>SN</th><th>IMEI</th><th>ICCID</th><th>串口通信</th><th>网页访问</th><th>测试结果</th><th>上报状态</th></tr></thead>
+            <tbody id="wholeMachineResultBody"></tbody>
+        </table>
+    </div>
+</div>
+<div id="logBox">测试日志...</div>
+
+<script>
+    // ==================================================================================
+    // 配置 & UI 元素
+    // ==================================================================================
+    const config = { 
+        aes: { keyString: "me%ov2Ied|eicegh", ivString: "me%ov2Ied|eicegh" }, 
+        urls: {
+            test: "http://gw.3wlink.cn:22011/?dgwkey=",
+            report: "https://daantest.free.beeceptor.com" // 上报服务器URL
+        },
+        baudRate: 115200,
+        timeouts: {
+            command: 15000, // 15s等待时间
+            response: 5000,    // 响应超时
+            fetch: 5000,    // 网络访问超时
+            report: 10000   // 上报超时
+        },
+        autoReport: true // 自动上报所有测试结果
+    };
+
+    const ui = {
+        logBox: document.getElementById('logBox'),
+        resultBody: document.getElementById('wholeMachineResultBody'),
+        saveRecordsBtn: document.getElementById('saveRecordsBtn'),
+        devicePanels: [
+            {
+                selectBtn: document.getElementById('selectDevice1Btn'),
+                connectBtn: document.getElementById('connectDevice1Btn'),
+                msg: document.getElementById('device1Msg'),
+            },
+            {
+                selectBtn: document.getElementById('selectDevice2Btn'),
+                connectBtn: document.getElementById('connectDevice2Btn'),
+                msg: document.getElementById('device2Msg'),
+            },
+            {
+                selectBtn: document.getElementById('selectDevice3Btn'),
+                connectBtn: document.getElementById('connectDevice3Btn'),
+                msg: document.getElementById('device3Msg'),
+            },
+            {
+                selectBtn: document.getElementById('selectDevice4Btn'),
+                connectBtn: document.getElementById('connectDevice4Btn'),
+                msg: document.getElementById('device4Msg'),
+            },
+        ]
+    };
+
+    // ==================================================================================
+    // 模块: 加密工具
+    // ==================================================================================
+    const DgwCrypto = {
+        _key: null, _iv: null,
+        async init() {
+            if (this._key) return;
+            try {
+                const keyBytes = new TextEncoder().encode(config.aes.keyString);
+                this._iv = new TextEncoder().encode(config.aes.ivString);
+                this._key = await crypto.subtle.importKey('raw', keyBytes, { name: 'AES-CBC' }, false, ['encrypt']);
+            } catch (error) {
+                console.error(":", error);
+                throw error;
+            }
+        },
+        async encrypt(plainText) {
+            if (!this._key) { await this.init(); }
+            try {
+                const textBytes = new TextEncoder().encode(plainText);
+                const blockSize = 16;
+                let paddedData;
+                if (textBytes.length % blockSize === 0) {
+                    paddedData = new Uint8Array(textBytes);
+                } else {
+                    const paddingNeeded = blockSize - (textBytes.length % blockSize);
+                    paddedData = new Uint8Array(textBytes.length + paddingNeeded);
+                    paddedData.set(textBytes);
+                }
+                const encrypted = await crypto.subtle.encrypt({ name: 'AES-CBC', iv: this._iv }, this._key, paddedData);
+                const encryptedArray = new Uint8Array(encrypted);
+                const truncated = encryptedArray.slice(0, paddedData.length);
+                const base64 = btoa(String.fromCharCode(...truncated));
+                return base64.replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
+            } catch (error) {
+                console.error('加密失败:', error);
+                return null;
+            }
+        }
+    };
+
+    // ==================================================================================
+    // 模块: 串口管理器
+    // ==================================================================================
+    class SerialManager {
+        constructor(id) {
+            this.id = id;
+            this.port = null;
+            this.reader = null;
+            this.writer = null;
+            this.connected = false;
+            this.buffer = '';
+            this.readLoopActive = false;
+        }
+        async select() { try { this.port = await navigator.serial.requestPort(); return true; } catch { return false; } }
+        async connect(baudRate) {
+            if (!this.port) return false;
+            try {
+                await this.port.open({ baudRate });
+                this.writer = this.port.writable?.getWriter();
+                this.connected = true;
+                return true;
+            } catch (e) {
+                console.error(`设备 ${this.id} 连接失败:`, e);
+                return false;
+            }
+        }
+        async disconnect() {
+            await this.stopReadLoop();
+            if (this.writer) { try { await this.writer.close(); } catch { /*  忽略  */ } finally { this.writer = null; } } 
+            if (this.port) { try { await this.port.close(); } catch { /*  忽略  */ } }
+            this.connected = false;
+            this.buffer = '';
+        }
+        async readLoop(onData, onError) {
+            if (!this.port?.readable || !this.connected) return;
+            this.readLoopActive = true;
+            this.reader = this.port.readable.getReader();
+            try {
+                while (this.connected && this.readLoopActive) {
+                    const { value, done } = await this.reader.read();
+                    if (done) break;
+                    if (onData) onData(new TextDecoder().decode(value));
+                }
+            } catch (e) {
+                if (this.readLoopActive) { 
+                    if (onError) onError(e);
+                }
+            } finally {
+                if(this.reader) {
+                    this.reader.releaseLock();
+                    this.reader = null;
+                }
+            }
+            this.readLoopActive = false;
+        }
+        async stopReadLoop() {
+            if (this.readLoopActive) {
+                this.readLoopActive = false;
+                if (this.reader) {
+                    try {
+                        await this.reader.cancel();
+                    } catch (e) { /* 忽略 */ }
+                }
+            }
+        }
+    }
+
+    // ==================================================================================
+    // 模块: UI 管理器
+    // ==================================================================================
+    const UIManager = {
+        log(msg) {
+            const timestamp = new Date().toLocaleTimeString();
+            ui.logBox.textContent += `\n[${timestamp}] ${msg}`;
+            ui.logBox.scrollTop = ui.logBox.scrollHeight;
+        },
+
+        update(id, text, type = 'info') {
+            const el = ui.devicePanels[id - 1].msg;
+            if (!el) return;
+            el.textContent = text;
+            el.style.color = type === 'error' ? 'red' : type === 'success' ? 'green' : 'black';
+        },
+
+        updateButtons(app) {
+            app.devices.forEach((device, i) => {
+                const panel = ui.devicePanels[i];
+                if (device.serial.connected) {
+                    panel.connectBtn.textContent = '断开';
+                    panel.connectBtn.disabled = false;
+                } else {
+                    panel.connectBtn.textContent = '连接';
+                    panel.connectBtn.disabled = !device.serial.port;
+                }
+                panel.selectBtn.disabled = device.inProgress;
+            });
+        },
+
+        addOrUpdateTestResult(record) {
+            let row = document.getElementById(`row-${record.sn}`);
+            if (!row) {
+                row = ui.resultBody.insertRow(0);
+                row.id = `row-${record.sn}`;
+                for (let i = 0; i < 8; i++) row.insertCell();
+            }
+
+            const getStatusDisplay = (val) => {
+                if (val === true) return { text: '正常', className: 'pass' };
+                if (val === false) return { text: '异常', className: 'fail' };
+                if (val === '未插卡') return { text: '未插卡', className: 'fail' };
+                return { text: '待测试', className: '' }; 
+            };
+
+            const updateCell = (cell, { text, className = '' }) => {
+                cell.textContent = text;
+                cell.className = className;
+            };
+
+            const columns = [
+                { text: record.timestamp, className: '' },
+                { text: record.sn, className: record.sn ? 'pass' : 'fail' },
+                { text: record.imei, className: record.imei ? 'pass' : 'fail' },
+                { text: record.iccid, className: record.iccid && record.iccid !== '未插卡' ? 'pass' : 'fail' },
+                getStatusDisplay(record.serial),
+                getStatusDisplay(record.web),
+                (() => { // 测试结果显示
+                    if (record.status === 'pending') return { text: '正在测试...', className: 'testing' };
+                    return getStatusDisplay(record.status);
+                })(),
+                (() => { // 上报状态
+                    if (record.reportFailed) return { text: '未上报', className: 'fail' };
+                    if (record.reported) return { text: '已上报', className: 'pass' };
+                    return { text: '待上报', className: 'testing' };
+                })()
+            ];
+
+            columns.forEach((col, i) => updateCell(row.cells[i], col));
+        }
+    };
+
+    // ==================================================================================
+    // 模块: 主应用
+    // ==================================================================================
+    const app = {
+        devices: [],
+
+        async init() {
+            try {
+                await DgwCrypto.init();
+            } catch (e) {
+                alert('URL加密模块初始化失败，测试功能已禁用。');
+                UIManager.log('❌ URL加密模块初始化失败!');
+                return;
+            }
+
+            for (let i = 1; i <= 4; i++) {
+                this.devices.push({
+                    id: i, 
+                    serial: new SerialManager(i),
+                    inProgress: false,
+                    record: null
+                });
+            }
+
+            this.setupEventListeners();
+            await this.loadSavedPorts();
+            UIManager.updateButtons(this);
+            UIManager.log('应用程序已初始化，请连接串口并开始测试。');
+        },
+
+        setupEventListeners() {
+            this.devices.forEach((device, i) => {
+                const panel = ui.devicePanels[i];
+                panel.selectBtn.addEventListener('click', () => this.selectPort(device.id));
+                panel.connectBtn.addEventListener('click', () => this.toggleConnection(device.id));
+            });
+            ui.saveRecordsBtn.addEventListener('click', () => this.saveToCSV());
+
+            // 界面切换功能
+            document.getElementById('switchInterfaceBtn').addEventListener('click', () => {
+                window.location.href = 'index.html';
+            });
+        },
+
+        saveToCSV() {
+            const records = this.devices.map(d => d.record).filter(r => r);
+            if (records.length === 0) {
+                alert('没有测试记录可供保存。');
+                return;
+            }
+
+            const header = ['时间', 'SN', 'IMEI', 'ICCID', '串口通信', '网页访问', '测试结果', '上报状态'];
+            const formatResult = (val) => {
+                if (val === true) return '正常';
+                if (val === false) return '异常';
+                return val || '待测试';
+            };
+
+            const rows = records.map(r => [
+                r.timestamp,
+                r.sn,
+                r.imei,
+                r.iccid,
+                formatResult(r.serial),
+                formatResult(r.web),
+                formatResult(r.status),
+                r.reported ? '已上报' : (r.reportFailed ? '未上报' : '待上报')
+            ]);
+
+            const csvContent = [header, ...rows].map(row => row.join(',')).join('\n');
+            const blob = new Blob([`\uFEFF${csvContent}`], { type: 'text/csv;charset=utf-8;' });
+            const link = document.createElement('a');
+            link.href = URL.createObjectURL(blob);
+            link.download = `整机测试记录_${new Date().toISOString().slice(0, 10)}.csv`;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        },
+
+        async loadSavedPorts() {
+            for (let i = 1; i <= 4; i++) {
+                const load = async (id) => {
+                    try {
+                        const savedIndex = localStorage.getItem(`serialPort_device_${id}`);
+                        if (savedIndex === null) return;
+                        const allPorts = await navigator.serial.getPorts();
+                        const port = allPorts[parseInt(savedIndex, 10)] || null;
+                        if (port) {
+                            this.devices[id - 1].serial.port = port;
+                            UIManager.update(id, '✅ 串口已加载');
+                        }
+                    } catch (e) {
+                        console.error('未能加载端口选择:', e);
+                    }
+                };
+                await load(i);
+            }
+        },
+
+        async selectPort(id) {
+            const device = this.devices[id - 1];
+            if (await device.serial.select()) {
+                UIManager.update(id, '✅ 串口已选择', 'success');
+                try {
+                    const allPorts = await navigator.serial.getPorts();
+                    const portIndex = allPorts.indexOf(device.serial.port);
+                    if (portIndex > -1) {
+                        localStorage.setItem(`serialPort_device_${id}`, portIndex.toString());
+                        UIManager.log(`💾 已保存设备 ${id} 串口选择`);
+                    }
+                } catch (e) {
+                    console.error('保持选择端口失败:', e);
+                }
+            }
+            UIManager.updateButtons(this);
+        },
+
+        async toggleConnection(id, forceDisconnect = false) {
+            const device = this.devices[id - 1];
+            if (forceDisconnect || device.serial.connected) {
+                await device.serial.disconnect();
+                UIManager.update(id, 'ℹ️ 测试完成，已断开');
+            } else {
+                UIManager.update(id, '⌛ 连接中...');
+                if (await device.serial.connect(config.baudRate)) {
+                    UIManager.update(id, '✅ 已连接', 'success');
+                    TestRunner.startTest(device, this);
+                } else {
+                    UIManager.update(id, '❌ 连接失败', 'error');
+                }
+            }
+            UIManager.updateButtons(this);
+        },
+    };
+
+    // ==================================================================================
+    // 模块: 测试执行器
+    // ==================================================================================
+    const TestRunner = {
+        async startTest(device, app) {
+            if (device.inProgress) return;
+
+            device.inProgress = true;
+            UIManager.updateButtons(app);
+            UIManager.update(device.id, '⏳ 等待设备启动...');
+
+            try {
+                await new Promise(resolve => setTimeout(resolve, config.timeouts.command));
+                UIManager.update(device.id, '✅ 正在在测试...');
+                // 等待结束后，开始发送指令并监听响应
+                await this.listenAndSendCommand(device, app);
+
+            } catch (e) {
+                UIManager.log(`❌ 设备 ${device.id}: 测试启动失败: ${e.message}`);
+                this.finishTest(device, { serial: false, web: false }, app);
+            }
+        },
+
+        async listenAndSendCommand(device, app) {
+            let responseReceived = false;
+            let timeoutId = null;
+
+            const sendAndRetry = async (isRetry = false) => {
+                if (responseReceived) return;
+
+                const textCommand = '<1,DSN,ICC,IME>'; // 移除了 \r\n
+                if (isRetry) {
+                    UIManager.log(`设备 ${device.id}: 响应超时，重试一次...`);
+                    await device.serial.writer.write(new TextEncoder().encode(textCommand));
+                    UIManager.log(`设备 ${device.id}: 📤 已重发指令: ${textCommand.trim()}`);
+                    timeoutId = setTimeout(() => {
+                        if (!responseReceived) {
+                            UIManager.log(`❌ 设备 ${device.id}: 第二次响应超时`);
+                            this.finishTest(device, { serial: false, web: false }, app);
+                        }
+                    }, config.timeouts.response);
+                } else {
+                    // 首次发送
+                    const hexCommand = new Uint8Array([0xf8, 0xf8, 0xf8, 0xf8, 0xf8, 0xf8, 0xf8, 0xf8]);
+                    await device.serial.writer.write(hexCommand);
+                    UIManager.log(`设备 ${device.id}: 📤 已发送HEX数据: f8 f8 f8 f8 f8 f8 f8 f8`);
+                    await new Promise(resolve => setTimeout(resolve, 50));
+                    await device.serial.writer.write(new TextEncoder().encode(textCommand));
+                    UIManager.log(`设备 ${device.id}: 📤 已发送指令: ${textCommand.trim()}`);
+                    // 为首次发送设置超时
+                    timeoutId = setTimeout(() => sendAndRetry(true), config.timeouts.response);
+                }
+            };
+
+            device.serial.buffer = '';
+            device.serial.readLoop(async (textData) => {
+                if (responseReceived) return;
+                device.serial.buffer += textData;
+                // 改进了响应检测逻辑
+                if (device.serial.buffer.includes('<1,DSN;') && device.serial.buffer.includes('<1,ICC;') && device.serial.buffer.includes('<1,IME;')) {
+                    responseReceived = true;
+                    clearTimeout(timeoutId);
+                    await this.handleResponse(device, device.serial.buffer, app);
+                    device.serial.buffer = '';
+                    await device.serial.stopReadLoop();
+                }
+            }, (e) => {
+                if (device.inProgress) { 
+                    UIManager.log(`❌ 设备 ${device.id} 串口读取异常: ${e.message}`);
+                    this.finishTest(device, { serial: false, web: false }, app);
+                }
+            });
+
+            // 触发首次发送
+            await sendAndRetry(false);
+        },
+
+        async handleResponse(device, buffer, app) {
+            const dsnMatch = buffer.match(/<1,DSN;([^>]+)>/);
+            const iccMatch = buffer.match(/<1,ICC;([^>]*)>/);
+            const imeMatch = buffer.match(/<1,IME;([^>]+)>/);
+
+            const sn = dsnMatch ? dsnMatch[1].trim() : null;
+            const iccid = iccMatch ? iccMatch[1].trim() : '';
+            const imei = imeMatch ? imeMatch[1].trim() : null;
+
+            if (!sn || !imei) {
+                UIManager.log(`❌ 设备 ${device.id}: 响应格式不正确: ${buffer}`);
+                this.finishTest(device, { sn: '未知', serial: false, web: false }, app);
+                return;
+            }
+            
+            device.record = { timestamp: new Date().toLocaleString(), sn, imei, iccid, serial: true, web: 'pending', status: 'pending' };
+            UIManager.addOrUpdateTestResult(device.record);
+            UIManager.log(`✅ 设备 ${device.id}: 收到SN: ${sn}, IMEI: ${imei}, ICCID: ${iccid || '无'}`);
+
+            if (!iccid) {
+                UIManager.log(`⚠️ 设备 ${device.id}: 未插卡`);
+                device.record.iccid = '未插卡';
+                device.record.web = '未插卡';
+                this.finishTest(device, { ...device.record, status: true }, app);
+            } else {
+                await this.startWebTest(device, app);
+            }
+        },
+
+        async _generateTestUrl(sn) {
+            const encrypted = await DgwCrypto.encrypt("DAAN" + sn);
+            return encrypted ? `${config.urls.test}${encrypted}` : null;
+        },
+
+        async startWebTest(device, app) {
+            UIManager.log(`🔗 设备 ${device.id}: 正在测试网络连接...`);
+            const testUrl = await this._generateTestUrl(device.record.sn);
+
+            let webResult = false;
+            if (testUrl) {
+                UIManager.log(`🌐 设备 ${device.id}: 测试网址: ${testUrl}`);
+                try {
+                    const proxiedUrl = `https://cors.lorenzoliam.workers.dev/?url=${encodeURIComponent(testUrl)}`;
+                    const controller = new AbortController();
+                    const timeoutId = setTimeout(() => controller.abort(), config.timeouts.fetch);
+                    const response = await fetch(proxiedUrl, { signal: controller.signal, mode: 'cors', cache: 'no-cache' });
+                    clearTimeout(timeoutId);
+                    if (response.ok) {
+                        UIManager.log(`✅ 设备 ${device.id}: 网络访问成功`);
+                        webResult = true;
+                    } else {
+                         UIManager.log(`❌ 设备 ${device.id}: 网络访问失败 - ${response.status}`);
+                    }
+                } catch (e) {
+                    UIManager.log(`❌ 设备 ${device.id}: 网络访问失败: ${e.message}`);
+                }
+            } else {
+                UIManager.log(`❌ 设备 ${device.id}: URL 生成失败`);
+            }
+            this.finishTest(device, { ...device.record, web: webResult, status: webResult }, app);
+        },
+
+        async finishTest(device, result, app) {
+            device.inProgress = false;
+            Object.assign(device.record, result);
+            UIManager.addOrUpdateTestResult(device.record);
+            UIManager.updateButtons(app);
+            UIManager.log(`📊 设备 ${device.id}: 测试完成 - ${result.status ? '通过' : '失败'}`);
+
+            if (config.autoReport) {
+                await this.reportResult(device.record);
+            }
+
+            try {
+                if (device.serial.writer) {
+                    UIManager.log(`设备 ${device.id}: 发送最终指令并准备断开...`);
+                    const hexCommand = new Uint8Array([0xf8, 0xf8, 0xf8, 0xf8, 0xf8, 0xf8, 0xf8, 0xf8]);
+                    await device.serial.writer.write(hexCommand);
+                    await new Promise(resolve => setTimeout(resolve, 50));
+                }
+            } catch (e) {
+                UIManager.log(`设备 ${device.id}: 发送最终指令失败: ${e.message}`);
+            } finally {
+                await app.toggleConnection(device.id, true);
+            }
+        },
+
+        async reportResult(record) {
+            UIManager.log(`📮 设备 ${record.sn}: 上报测试结果...`);
+            try {
+                const reportData = { deviceId: 'DGS-100-WM', results: [{ sn: record.sn, imei: record.imei, iccid: record.iccid, serialTest: record.serial, webTest: record.web, overallStatus: record.status }] };
+                
+                const response = await fetch(config.urls.report, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'User-Agent': 'DGS-100-Tester/1.1' },
+                    body: JSON.stringify(reportData),
+                    signal: AbortSignal.timeout(config.timeouts.report)
+                });
+
+                if (response.ok) {
+                    UIManager.log(`✅ 设备 ${record.sn}: 上报成功`);
+                    record.reported = true;
+                } else {
+                    throw new Error(`服务器响应错误: ${response.status}`);
+                }
+            } catch (error) {
+                UIManager.log(`❌ 设备 ${record.sn}: 结果上报失败: ${error.message}`);
+                record.reportFailed = true;
+            }
+            UIManager.addOrUpdateTestResult(record);
+        }
+    };
+
+    // ==================================================================================
+    // 应用启动
+    // ==================================================================================
+    if ('serial' in navigator) {
+        app.init();
+    } else {
+        alert('错误：您的浏览器不支持 Web Serial API。请使用最新版的 Chrome 或 Edge 浏览器。');
+        document.body.innerHTML = '<h1>浏览器不兼容</h1>';
+    }
+</script>
+</body>
+</html>
