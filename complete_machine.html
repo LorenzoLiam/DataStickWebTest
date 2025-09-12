@@ -2,7 +2,7 @@
 <html lang="zh">
 <head>
     <meta charset="UTF-8">
-    <title>整机测试</title>
+    <title>DGS-100 整机测试</title>
     <style>
         body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; padding: 20px; background-color: #f4f7f6; color: #333; line-height: 1.6; }
         .btn { margin: 5px; padding: 8px 15px; border: 1px solid #ccc; border-radius: 4px; cursor: pointer; background-color: #fff; transition: background-color 0.2s, box-shadow 0.2s; }
@@ -10,6 +10,7 @@
         .btn:disabled { opacity: 0.6; cursor: not-allowed; background-color: #f0f0f0; }
         .panel { border: 1px solid #ddd; border-radius: 8px; padding: 15px; margin: 10px 0; background-color: #fff; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
         .panel-blue { border-color: #007bff; background: #f0f8ff; }
+        .panel-green { border-color: #28a745; background: #f0fff0; }
         .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 15px; }
         table { border-collapse: collapse; width: 100%; margin: 20px 0; background-color: #fff; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
         th, td { border: 1px solid #ddd; padding: 10px; text-align: center; }
@@ -24,12 +25,15 @@
 <body>
 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
     <h1>整机测试</h1>
-    <button class="btn" id="switchInterfaceBtn" style="background-color: #28a745; color: white; font-weight: bold;">切换到单板测试</button>
+    <div style="display: flex; gap: 10px;">
+        <button class="btn" id="saveRecordsBtn">保存记录</button>
+        <button class="btn" id="switchInterfaceBtn" style="background-color: #28a745; color: white; font-weight: bold;">切换到单板测试</button>
+    </div>
 </div>
 
 <div class="panel">
     <div class="grid">
-        <div class="panel panel-blue">
+        <div class="panel panel-green">
             <h4>设备1</h4>
             <div style="display: flex; align-items: center; gap: 10px;">
                 <button class="btn" id="selectDevice1Btn">选择串口</button>
@@ -45,7 +49,7 @@
                 <div id="device2Msg"></div>
             </div>
         </div>
-        <div class="panel panel-blue">
+        <div class="panel panel-green">
             <h4>设备3</h4>
             <div style="display: flex; align-items: center; gap: 10px;">
                 <button class="btn" id="selectDevice3Btn">选择串口</button>
@@ -67,7 +71,6 @@
 <div class="panel">
     <div class="table-container">
         <table>
-                <button class="btn" id="saveRecordsBtn">保存记录到CSV</button>
             <thead><tr><th>时间</th><th>SN</th><th>IMEI</th><th>ICCID</th><th>串口通信</th><th>网页访问</th><th>测试结果</th><th>上报状态</th></tr></thead>
             <tbody id="wholeMachineResultBody"></tbody>
         </table>
@@ -253,15 +256,20 @@
                 const panel = ui.devicePanels[i];
                 if (device.serial.connected) {
                     panel.connectBtn.textContent = '断开';
-                    panel.connectBtn.disabled = false;
+                    // 测试进行中时禁用断开按钮
+                    panel.connectBtn.disabled = device.inProgress;
                 } else {
                     panel.connectBtn.textContent = '连接';
                     panel.connectBtn.disabled = !device.serial.port;
                 }
                 panel.selectBtn.disabled = device.inProgress;
             });
+            
+            // 更新保存记录按钮状态
+            const hasRecords = app.devices.some(d => d.record);
+            ui.saveRecordsBtn.disabled = !hasRecords;
         },
-
+        
         addOrUpdateTestResult(record) {
             let row = document.getElementById(`row-${record.sn}`);
             if (!row) {
@@ -344,7 +352,7 @@
 
             // 界面切换功能
             document.getElementById('switchInterfaceBtn').addEventListener('click', () => {
-                window.location.href = 'index.html';
+                window.location.href = 'single_board.html';
             });
         },
 
@@ -362,14 +370,7 @@
                 return val || '待测试';
             };
 
-            const rows = records.map(r => [
-                r.timestamp,
-                r.sn,
-                r.imei,
-                r.iccid,
-                formatResult(r.serial),
-                formatResult(r.web),
-                formatResult(r.status),
+            const rows = records.map(r => [r.timestamp, r.sn, r.imei, r.iccid, formatResult(r.serial), formatResult(r.web), formatResult(r.status),
                 r.reported ? '已上报' : (r.reportFailed ? '未上报' : '待上报')
             ]);
 
@@ -557,20 +558,35 @@
             let webResult = false;
             if (testUrl) {
                 UIManager.log(`🌐 设备 ${device.id}: 测试网址: ${testUrl}`);
-                try {
-                    const proxiedUrl = `https://cors.lorenzoliam.workers.dev/?url=${encodeURIComponent(testUrl)}`;
-                    const controller = new AbortController();
-                    const timeoutId = setTimeout(() => controller.abort(), config.timeouts.fetch);
-                    const response = await fetch(proxiedUrl, { signal: controller.signal, mode: 'cors', cache: 'no-cache' });
-                    clearTimeout(timeoutId);
-                    if (response.ok) {
-                        UIManager.log(`✅ 设备 ${device.id}: 网络访问成功`);
-                        webResult = true;
-                    } else {
-                         UIManager.log(`❌ 设备 ${device.id}: 网络访问失败 - ${response.status}`);
+                
+                // 尝试两次网络访问
+                for (let attempt = 1; attempt <= 2; attempt++) {
+                    try {
+                        if (attempt === 2) {
+                            UIManager.log(`🔄 设备 ${device.id}: 网络访问失败，重试第${attempt}次...`);
+                        }
+                        
+                        const proxiedUrl = `https://cors.lorenzoliam.workers.dev/?url=${encodeURIComponent(testUrl)}`;
+                        const controller = new AbortController();
+                        const timeoutId = setTimeout(() => controller.abort(), config.timeouts.fetch);
+                        const response = await fetch(proxiedUrl, { signal: controller.signal, mode: 'cors', cache: 'no-cache' });
+                        clearTimeout(timeoutId);
+                        
+                        if (response.ok) {
+                            UIManager.log(`✅ 设备 ${device.id}: 网络访问成功${attempt === 2 ? ' (重试成功)' : ''}`);
+                            webResult = true;
+                            break; // 成功则跳出循环
+                        } else {
+                            UIManager.log(`❌ 设备 ${device.id}: 网络访问失败 - ${response.status}${attempt === 1 ? ' (准备重试)' : ''}`);
+                        }
+                    } catch (e) {
+                        UIManager.log(`❌ 设备 ${device.id}: 网络访问失败: ${e.message}${attempt === 1 ? ' (准备重试)' : ''}`);
                     }
-                } catch (e) {
-                    UIManager.log(`❌ 设备 ${device.id}: 网络访问失败: ${e.message}`);
+                    
+                    // 如果是第一次尝试失败，等待一小段时间再重试
+                    if (attempt === 1 && !webResult) {
+                        await new Promise(resolve => setTimeout(resolve, 500));
+                    }
                 }
             } else {
                 UIManager.log(`❌ 设备 ${device.id}: URL 生成失败`);
@@ -606,11 +622,11 @@
         async reportResult(record) {
             UIManager.log(`📮 设备 ${record.sn}: 上报测试结果...`);
             try {
-                const reportData = { deviceId: 'DGS-100-WM', results: [{ sn: record.sn, imei: record.imei, iccid: record.iccid, serialTest: record.serial, webTest: record.web, overallStatus: record.status }] };
+                const reportData = { deviceId: 'DGS-100', results: [{ sn: record.sn, imei: record.imei, iccid: record.iccid, serialTest: record.serial, webTest: record.web, overallStatus: record.status }] };
                 
                 const response = await fetch(config.urls.report, {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json', 'User-Agent': 'DGS-100-Tester/1.1' },
+                    headers: { 'Content-Type': 'application/json', 'User-Agent': 'DGS-100-Tester/1.0' },
                     body: JSON.stringify(reportData),
                     signal: AbortSignal.timeout(config.timeouts.report)
                 });
