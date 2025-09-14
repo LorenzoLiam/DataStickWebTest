@@ -566,7 +566,7 @@
                             UIManager.log(`🔄 设备 ${device.id}: 网络访问失败，重试第${attempt}次...`);
                         }
                         
-                        const proxiedUrl = `https://cors.lorenzoliam.workers.dev/?url=${encodeURIComponent(testUrl)}`;
+                        const proxiedUrl = `https://cors.9185918.xyz/?url=${encodeURIComponent(testUrl)}`;
                         const controller = new AbortController();
                         const timeoutId = setTimeout(() => controller.abort(), config.timeouts.fetch);
                         const response = await fetch(proxiedUrl, { signal: controller.signal, mode: 'cors', cache: 'no-cache' });
