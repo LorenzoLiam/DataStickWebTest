@@ -566,22 +566,19 @@
                             UIManager.log(`🔄 设备 ${device.id}: 网络访问失败，重试第${attempt}次...`);
                         }
                         
-                        // 使用 fetch 方法测试网址是否能访问
+                        const proxiedUrl = `https://cors.9185918.xyz/?url=${encodeURIComponent(testUrl)}`;
                         const controller = new AbortController();
                         const timeoutId = setTimeout(() => controller.abort(), config.timeouts.fetch);
-                        
-                        const response = await fetch(testUrl, { 
-                            signal: controller.signal,
-                            mode: 'no-cors', // 避免CORS问题
-                            cache: 'no-cache'
-                        });
-                        
+                        const response = await fetch(proxiedUrl, { signal: controller.signal, mode: 'cors', cache: 'no-cache' });
                         clearTimeout(timeoutId);
                         
-                        // no-cors模式下，response.ok 可能不准确，但能到这里说明网络连接成功
-                        UIManager.log(`✅ 设备 ${device.id}: 网络访问成功${attempt === 2 ? ' (重试成功)' : ''}`);
-                        webResult = true;
-                        break; // 成功则跳出循环
+                        if (response.ok) {
+                            UIManager.log(`✅ 设备 ${device.id}: 网络访问成功${attempt === 2 ? ' (重试成功)' : ''}`);
+                            webResult = true;
+                            break; // 成功则跳出循环
+                        } else {
+                            UIManager.log(`❌ 设备 ${device.id}: 网络访问失败 - ${response.status}${attempt === 1 ? ' (准备重试)' : ''}`);
+                        }
                     } catch (e) {
                         UIManager.log(`❌ 设备 ${device.id}: 网络访问失败: ${e.message}${attempt === 1 ? ' (准备重试)' : ''}`);
                     }
