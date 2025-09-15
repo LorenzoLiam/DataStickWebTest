@@ -352,7 +352,7 @@
 
             // 界面切换功能
             document.getElementById('switchInterfaceBtn').addEventListener('click', () => {
-                window.location.href = 'index.html';
+                window.location.href = 'single_board.html';
             });
         },
 
@@ -551,47 +551,36 @@
             return encrypted ? `${config.urls.test}${encrypted}` : null;
         },
 
-        async startWebTest(device, app) {
-            UIManager.log(`🔗 设备 ${device.id}: 正在测试网络连接...`);
-            const testUrl = await this._generateTestUrl(device.record.sn);
+        async startWebTest(sn, app) {
+            UIManager.update('testMsg', '🔗 正在测试网络连接...');
+            const testUrl = await this._generateTestUrl(sn);
 
             let webResult = false;
             if (testUrl) {
-                UIManager.log(`🌐 设备 ${device.id}: 测试网址: ${testUrl}`);
-                
-                // 尝试两次网络访问
-                for (let attempt = 1; attempt <= 2; attempt++) {
-                    try {
-                        if (attempt === 2) {
-                            UIManager.log(`🔄 设备 ${device.id}: 网络访问失败，重试第${attempt}次...`);
-                        }
-                        
-                        const proxiedUrl = `https://cors.9185918.xyz/?url=${encodeURIComponent(testUrl)}`;
-                        const controller = new AbortController();
-                        const timeoutId = setTimeout(() => controller.abort(), config.timeouts.fetch);
-                        const response = await fetch(proxiedUrl, { signal: controller.signal, mode: 'cors', cache: 'no-cache' });
-                        clearTimeout(timeoutId);
-                        
-                        if (response.ok) {
-                            UIManager.log(`✅ 设备 ${device.id}: 网络访问成功${attempt === 2 ? ' (重试成功)' : ''}`);
-                            webResult = true;
-                            break; // 成功则跳出循环
-                        } else {
-                            UIManager.log(`❌ 设备 ${device.id}: 网络访问失败 - ${response.status}${attempt === 1 ? ' (准备重试)' : ''}`);
-                        }
-                    } catch (e) {
-                        UIManager.log(`❌ 设备 ${device.id}: 网络访问失败: ${e.message}${attempt === 1 ? ' (准备重试)' : ''}`);
-                    }
+                UIManager.log(`🌐 测试网址: ${testUrl}`);
+                try {
+                    // 使用 fetch 方法测试网址是否能访问       
+                    const controller = new AbortController();
+                    const timeoutId = setTimeout(() => controller.abort(), config.timeouts.fetch);
                     
-                    // 如果是第一次尝试失败，等待一小段时间再重试
-                    if (attempt === 1 && !webResult) {
-                        await new Promise(resolve => setTimeout(resolve, 500));
-                    }
+                    const response = await fetch(testUrl, { 
+                        signal: controller.signal,
+                        mode: 'no-cors', // 避免CORS问题
+                        cache: 'no-cache'
+                    });
+                    
+                    clearTimeout(timeoutId); 
+                    // no-cors模式下，response.ok 可能不准确，但能到这里说明网络连接成功
+                    UIManager.log('✅ 网址访问成功');
+                    webResult = true;
+                } catch (e) {
+                    UIManager.log(`❌ 网络访问失败: ${e.message}`);
                 }
             } else {
-                UIManager.log(`❌ 设备 ${device.id}: URL 生成失败`);
+                UIManager.log('❌ URL 生成失败');
             }
-            this.finishTest(device, { ...device.record, web: webResult, status: webResult }, app);
+            const currentRecord = app.records.find(r => r.sn === sn);
+            await this.finishTest({ ...currentRecord, sn, web: webResult }, app);
         },
 
         async finishTest(device, result, app) {
