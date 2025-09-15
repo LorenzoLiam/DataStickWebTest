@@ -299,7 +299,8 @@
             const getStatusDisplay = (val) => {
                 if (val === true) return { text: '正常', className: 'pass' };
                 if (val === false) return { text: '异常', className: 'fail' };
-                return { text: '待测试', className: '' }; 
+                if (val === '未插卡') return { text: '未插卡', className: 'fail' };
+                return { text: '待测试', className: '' };
             };
 
             const updateCell = (cell, { text, className = '' }) => {
@@ -311,7 +312,7 @@
                 { text: new Date(record.timestamp).toLocaleString() },
                 { text: record.sn, className: record.snMismatch ? 'fail' : (record.snMatch ? 'pass' : '') },
                 { text: record.imei, className: (record.imei !== '待测试') ? 'pass' : (record.imeiFailed ? 'fail' : '') },
-                { text: record.iccid, className: (record.iccid !== '待测试') ? 'pass' : (record.iccidFailed ? 'fail' : '') },
+                { text: record.iccid, className: (record.iccid === '未插卡' || record.iccidFailed) ? 'fail' : (record.iccid !== '待测试' ? 'pass' : '') },
                 getStatusDisplay(record.serial),
                 getStatusDisplay(record.vout),
                 getStatusDisplay(record.iout),
@@ -432,7 +433,7 @@
     const app = {
         state: {
             reporting: false,
-            test: { inProgress: false, currentSN: '', currentStep: '', stepTimeouts: {}, stepRetryCount: {} },
+            test: { inProgress: false, currentSN: '', currentStep: '', stepTimeouts: {}, stepRetryCount: {}, skipWebTest: false },
             device: { ready: false, initializing: false, waitingForInitialization: false, status: null, colorR: 0 }
         },
         serial: {
@@ -559,6 +560,7 @@
             }
             app.state.test.inProgress = true;
             app.state.test.stepRetryCount = {};
+            app.state.test.skipWebTest = false;
             UIManager.updateButtons(app);
             UIManager.update('testMsg', '⏳ 正在测试...');
             UIManager.clearLog();
@@ -644,19 +646,31 @@
         },
 
         async handleIccidResponse(buffer, sn, app) {
-            const match = buffer.match(/ICC;(\S+?)[\r\n]/);
+            const match = buffer.match(/ICC;([^\r\n]*)[\r\n]/);
             if (!match) return;
             this.clearStepTimeout('WAITING_FOR_ICCID', app);
             const receivedValue = match[1].trim();
+
             if (receivedValue.toLowerCase() === 'error') {
                 UIManager.log(`❌ 收到 ICC ERROR`);
-                RecordManager.createOrUpdate({ sn, iccid: '待测试', iccidFailed: true });
+                RecordManager.createOrUpdate({ sn, iccid: '未插卡', iccidFailed: true });
+            } else if (receivedValue === '' || receivedValue === ';') {
+                UIManager.log(`❌ 收到 ICC 无值，未插卡`);
+                RecordManager.createOrUpdate({ sn, iccid: '未插卡', iccidFailed: true });
             } else {
                 UIManager.log(`✅ 收到 ICC: ${receivedValue}`);
                 RecordManager.createOrUpdate({ sn, iccid: receivedValue });
             }
+
             UIManager.log(`✅ 串口通信测试: 正常`);
             RecordManager.createOrUpdate({ sn, serial: true });
+
+            // 继续硬件测试，但标记是否需要跳过网页测试
+            app.state.test.skipWebTest = (receivedValue === '' || receivedValue === ';' || receivedValue.toLowerCase() === 'error');
+            if (app.state.test.skipWebTest) {
+                UIManager.log(`⚠️ 未插卡，将跳过网页测试`);
+            }
+
             await this.startComponentAndLedTests(sn, app);
             app.serial.test.buffer = '';
         },
@@ -738,7 +752,13 @@
             UIManager.log(`📊 网络指示灯 平均值: ${colorR.toFixed(3)}, 结果: ${pass ? '正常' : '异常'}`);
             RecordManager.createOrUpdate({ sn, networkLight: pass });
 
-            await this.sendRstAndWait(sn, app);
+            // 如果需要跳过网页测试，直接结束，不进行AT+RST等待
+            if (app.state.test.skipWebTest) {
+                const currentRecord = app.records.find(r => r.sn === sn);
+                await this.finishTest({ ...currentRecord, sn, web: '未插卡', webFailed: true }, app);
+            } else {
+                await this.sendRstAndWait(sn, app);
+            }
         },
 
         async sendRstAndWait(sn, app) {
@@ -763,6 +783,7 @@
         },
 
         async startWebTest(sn, app) {
+
             UIManager.update('testMsg', '🔗 正在测试网络连接...');
             const testUrl = await this._generateTestUrl(sn);
 
@@ -792,13 +813,20 @@
         async finishTest(result, app) {
             await app.serial.test.stopReadLoop();
             if (!app.state.test.inProgress) return;
-            app.state.test.inProgress = false; 
+            app.state.test.inProgress = false;
             Object.values(app.state.test.stepTimeouts).forEach(clearTimeout);
             app.state.test.stepTimeouts = {};
             app.state.test.stepRetryCount = {};
+            app.state.test.skipWebTest = false;
             app.state.test.currentStep = 'DONE';
 
-            const finalStatus = !!(result.serial && result.web);
+            // 检查所有测试项目：未插卡时网页测试不计入，有卡时所有项目都必须正常
+            const hardwareTests = [
+                result.serial, result.vout, result.iout, result.ai0, result.ai1, result.ai2,
+                result.powerLight, result.rs485Light, result.networkLight
+            ];
+            const allHardwarePass = hardwareTests.every(test => test === true);
+            const finalStatus = result.web === '未插卡' ? allHardwarePass : !!(allHardwarePass && result.web);
             RecordManager.createOrUpdate({ ...result, status: finalStatus });
 
             UIManager.log(`📊 测试完成: ${finalStatus ? '正常' : '异常'}`);
