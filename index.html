@@ -97,7 +97,7 @@
 <script>
 const config = {
     aes: { keyString: "me%ov2Ied|eicegh", ivString: "me%ov2Ied|eicegh" },
-    urls: { test: "http://gw.3wlink.cn:22011/?dgwkey=", report: "https://eoy7ueylk4yybg6.m.pipedream.net" },
+    urls: { test: "http://gw.3wlink.cn:22011/?dgwkey=", report: "https://daantest.free.beeceptor.com" },
     baudRates: { status: 115200, test: 10000000 },
     timeouts: { dsn: 3000, imei: 3000, iccid: 3000, rst: 15000, led: 2000, fetch: 5000, report: 10000 },
     sampling: { count: 4, interval: 500 },
@@ -351,6 +351,7 @@ const RecordManager = {
                     return payload;
                 })
             };
+            this.uiManager.log(`上报数据: ${JSON.stringify(reportData)}`);
             const response = await fetch(config.urls.report, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'User-Agent': 'DGS-100-Tester/1.0' },
