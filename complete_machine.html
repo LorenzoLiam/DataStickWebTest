@@ -36,8 +36,20 @@
         }
         .test-result-display.pass { background: linear-gradient(135deg, #28a745, #20c997); color: white; border: 2px solid #1e7e34; }
         .test-result-display.fail { background: linear-gradient(135deg, #dc3545, #ff6b6b); color: white; border: 2px solid #bd2130; }
-        .test-result-display.waiting { background: linear-gradient(135deg, #ffc107, #ffb347); color: white; border: 2px solid #e0a800; }
+        .test-result-display.waiting { background: linear-gradient(135deg, #007bff, #3da9fc); color: white; border: 2px solid #0056b3; }
         .test-result-display.default { background: #f8f9fa; color: #6c757d; border: 2px solid #dee2e6; }
+        .sim-label {
+            font-size: 18px;
+            display: flex;
+            align-items: center;
+            cursor: pointer;
+            margin-left: auto;
+            white-space: nowrap;
+        }
+        .sim-label input {
+            transform: scale(1.5);
+            margin-right: 5px;
+        }
     </style>
 </head>
 <body>
@@ -50,13 +62,79 @@
 <!-- 设备连接面板 -->
 <div class="panel">
     <div class="grid">
-        <div class="panel panel-green"><h4>设备A</h4><div style="display: flex; align-items: center; gap: 10px;"><button class="btn" id="selectDevice1Btn">选择串口</button><button class="btn" id="connectDevice1Btn">连接</button><div id="device1Msg"></div></div></div>
-        <div class="panel panel-blue"><h4>设备B</h4><div style="display: flex; align-items: center; gap: 10px;"><button class="btn" id="selectDevice2Btn">选择串口</button><button class="btn" id="connectDevice2Btn">连接</button><div id="device2Msg"></div></div></div>
-        <div class="panel panel-green"><h4>设备C</h4><div style="display: flex; align-items: center; gap: 10px;"><button class="btn" id="selectDevice3Btn">选择串口</button><button class="btn" id="connectDevice3Btn">连接</button><div id="device3Msg"></div></div></div>
-        <div class="panel panel-blue"><h4>设备D</h4><div style="display: flex; align-items: center; gap: 10px;"><button class="btn" id="selectDevice4Btn">选择串口</button><button class="btn" id="connectDevice4Btn">连接</button><div id="device4Msg"></div></div></div>
+        <div class="panel panel-green">
+            <h2>设备A（SERIAL-A）</h2>
+            <div style="display: flex; align-items: center; margin-bottom: 5px;">
+                <label for="snInput4" style="margin-right: 5px; font-weight: bold; font-size: 30px;">SN:</label>
+                <input type="text" id="snInput1" placeholder="请连接设备..." style="flex-grow: 1; padding: 10px; font-size: 24px;" disabled>
+            </div>
+            <div style="display: flex; align-items: center; gap: 10px;">
+                <button class="btn" id="selectDevice1Btn">选择串口</button>
+                <button class="btn" id="connectDevice1Btn">连接</button>
+                <div id="device1Msg"></div>
+                <label class="sim-label"><input type="checkbox" id="simCardCheckbox1" checked> 已插卡</label>
+            </div>
+        </div>
+        <div class="panel panel-blue">
+            <h2>设备B（SERIAL-B）</h2>
+            <div style="display: flex; align-items: center; margin-bottom: 5px;">
+                <label for="snInput4" style="margin-right: 5px; font-weight: bold; font-size: 30px;">SN:</label>
+                <input type="text" id="snInput2" placeholder="请连接设备..." style="flex-grow: 1; padding: 10px; font-size: 24px;" disabled>
+            </div>
+            <div style="display: flex; align-items: center; gap: 10px;">
+                <button class="btn" id="selectDevice2Btn">选择串口</button>
+                <button class="btn" id="connectDevice2Btn">连接</button>
+                <div id="device2Msg"></div>
+                <label class="sim-label"><input type="checkbox" id="simCardCheckbox2" checked> 已插卡</label>
+            </div>
+        </div>
+        <div class="panel panel-green">
+            <h2>设备C（SERIAL-C）</h2>
+            <div style="display: flex; align-items: center; margin-bottom: 5px;">
+                <label for="snInput4" style="margin-right: 5px; font-weight: bold; font-size: 30px;">SN:</label>
+                <input type="text" id="snInput3" placeholder="请连接设备..." style="flex-grow: 1; padding: 10px; font-size: 24px;" disabled>
+            </div>
+            <div style="display: flex; align-items: center; gap: 10px;">
+                <button class="btn" id="selectDevice3Btn">选择串口</button>
+                <button class="btn" id="connectDevice3Btn">连接</button>
+                <div id="device3Msg"></div>
+                <label class="sim-label"><input type="checkbox" id="simCardCheckbox3" checked> 已插卡</label>
+            </div>
+        </div>
+        <div class="panel panel-blue">
+            <h2>设备D（SERIAL-D）</h2>
+            <div style="display: flex; align-items: center; margin-bottom: 5px;">
+                <label for="snInput4" style="margin-right: 5px; font-weight: bold; font-size: 30px;">SN:</label>
+                <input type="text" id="snInput4" placeholder="请连接设备..." style="flex-grow: 1; padding: 10px; font-size: 24px;" disabled>
+            </div>
+            <div style="display: flex; align-items: center; gap: 10px;">
+                <button class="btn" id="selectDevice4Btn">选择串口</button>
+                <button class="btn" id="connectDevice4Btn">连接</button>
+                <div id="device4Msg"></div>
+                <label class="sim-label"><input type="checkbox" id="simCardCheckbox4" checked> 已插卡</label>
+            </div>
+        </div>
     </div>
 </div>
 
+<!-- 状态显示 -->
+ <div class="panel">
+    <div style="display: flex; flex-direction: column; align-items: center; gap: 15px; margin: 15px 0;">
+        
+        <div style="display: flex; justify-content: center; width: 80%;">
+            <div id="testResultDisplay-1" class="test-result-display default" style="width: 300px; margin-left: 160px;">设备A未连接</div>
+            <div id="testResultDisplay-3" class="test-result-display default" style="width: 300px; margin-left: 120px;">设备C未连接</div>
+        </div>
+
+        <img id="deviceImage4" src="image.png" alt="设备图片" style="width: 50%; border-radius: 8px; box-shadow: var(--shadow-sm);"> 
+
+        <div style="display: flex; justify-content: center; width: 80%;">
+            <div id="testResultDisplay-2" class="test-result-display default" style="width: 300px; margin-left: 160px;">设备B未连接</div>
+            <div id="testResultDisplay-4" class="test-result-display default" style="width: 300px; margin-left: 120px;">设备D未连接</div>
+        </div>
+
+    </div>
+</div>
 <!-- 测试结果表格 -->
 <div class="panel">
     <div class="table-container">
@@ -67,14 +145,8 @@
     </div>
 </div>
 
-<!-- 日志与状态显示 -->
+<!-- 日志 -->
 <div id="logBox">测试日志...</div>
-<div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin: 15px 0;">
-    <div id="testResultDisplay-1" class="test-result-display default">设备A未连接</div>
-    <div id="testResultDisplay-2" class="test-result-display default">设备B未连接</div>
-    <div id="testResultDisplay-3" class="test-result-display default">设备C未连接</div>
-    <div id="testResultDisplay-4" class="test-result-display default">设备D未连接</div>
-</div>
 
 <script>
 
@@ -82,7 +154,7 @@
         'use strict';
         const CONFIG = {
             AES: { KEY_STRING: "me%ov2Ied|eicegh", IV_STRING: "me%ov2Ied|eicegh" },
-            URLS: { TEST: "http://gw.3wlink.cn:22011/?dgwkey=", REPORT: "https://eoy7ueylk4yybg6.m.pipedream.net" },
+            URLS: { TEST: "http://gw.3wlink.cn:22011/?dgwkey=", REPORT: "https://daantest.free.beeceptor.com" },
             BAUD_RATE: 115200,
             TIMEOUTS: { COMMAND: 15000, RESPONSE: 5000, FETCH: 5000, REPORT: 10000 },
             AUTO_REPORT: true,
@@ -98,7 +170,9 @@
             devicePanels: Array.from({ length: CONFIG.DEVICE_COUNT }, (_, i) => ({
                 selectBtn: document.getElementById(`selectDevice${i + 1}Btn`),
                 connectBtn: document.getElementById(`connectDevice${i + 1}Btn`),
-                msg: document.getElementById(`device${i + 1}Msg`)
+                msg: document.getElementById(`device${i + 1}Msg`),
+                snInput: document.getElementById(`snInput${i + 1}`),
+                simCheckbox: document.getElementById(`simCardCheckbox${i + 1}`)
             }))
         };
 
@@ -249,15 +323,43 @@
             updateButtons(devices) {
                 devices.forEach((device, i) => {
                     const panel = UI.devicePanels[i];
-                    panel.connectBtn.textContent = device.serial.connected ? '断开' : '连接';
+                    const isConnected = device.serial.connected;
+
+                    panel.connectBtn.textContent = isConnected ? '断开' : '连接';
                     panel.connectBtn.disabled = !device.serial.connected && !device.serial.port;
                     panel.selectBtn.disabled = device.inProgress;
+                    
+                    panel.snInput.disabled = !isConnected || device.inProgress;
+                    if (isConnected) {
+                        panel.snInput.placeholder = '请使用扫码枪扫描...';
+                    } else {
+                        panel.snInput.placeholder = '请连接设备...';
+                    }
                 });
             }
 
             addOrUpdateTestResult(record) {
                 const row = this.deviceRows.get(record.deviceId);
                 if (!row) return;
+
+                if (record.errorReason === 'SN不匹配') {
+                    row.cells[1].textContent = record.timestamp;
+                    row.cells[2].textContent = record.sn || '未知'; // Device SN
+                    row.cells[2].className = 'fail';
+                    row.cells[3].textContent = '-';
+                    row.cells[3].className = '';
+                    row.cells[4].textContent = '-';
+                    row.cells[4].className = '';
+                    row.cells[5].textContent = '-';
+                    row.cells[5].className = '';
+                    row.cells[6].textContent = '-';
+                    row.cells[6].className = '';
+                    row.cells[7].textContent = 'SN不匹配';
+                    row.cells[7].className = 'fail';
+                    row.cells[8].textContent = '-';
+                    row.cells[8].className = '';
+                    return;
+                }
 
                 const getStatusDisplay = (val) => {
                     if (val === true) return { text: '正常', className: 'pass' };
@@ -266,31 +368,33 @@
                     return { text: '待测试', className: '' };
                 };
 
-                const getInfoCell = (value, failText = '获取失败') => ({
+                const getInfoCell = (value, failText = '异常') => ({
                     text: value || failText,
                     className: value ? 'pass' : 'fail'
                 });
 
                 const getIccidCell = (iccid) => {
-                    if (iccid && iccid !== '未插卡') return { text: iccid, className: 'pass' };
+                    if (iccid && iccid !== '未插卡' && iccid !== '异常') return { text: iccid, className: 'pass' };
                     if (iccid === '未插卡') return { text: '未插卡', className: 'fail' };
-                    return { text: '获取失败', className: 'fail' };
+                    return { text: iccid || '异常', className: 'fail' };
                 };
 
                 const getReportStatusCell = (record) => {
-                    // 测试失败的记录不会被上报
-                    if (record.status === false) {
+                    if (record.skipReport) {
                         return { text: '未上报', className: 'fail' };
                     }
-                    // 测试成功但上报失败的记录
-                    if (record.reportFailed) {
-                        return { text: '未上报', className: 'fail' };
-                    }
-                    // 上报成功的记录
                     if (record.reported) {
                         return { text: '已上报', className: 'pass' };
                     }
-                    // 其他情况（测试进行中，或测试成功等待上报）
+                    if (record.reportFailed) {
+                        return { text: '未上报', className: 'fail' };
+                    }
+                    if (record.status !== 'pending' && !CONFIG.AUTO_REPORT) {
+                        return { text: '未上报', className: record.status === false ? 'fail' : '' };
+                    }
+                    if (record.status === false && !record.sn) {
+                        return { text: '未上报', className: 'fail' };
+                    }
                     return { text: '待上报', className: 'testing' };
                 };
 
@@ -322,7 +426,7 @@
                 }
             }
 
-            showTestResult(deviceId, state) {
+            showTestResult(deviceId, state, message = null) {
                 const display = UI.testResultDisplays[deviceId - 1];
                 if (!display) return;
 
@@ -335,7 +439,7 @@
                 };
                 
                 const { text, className } = states[state] || states.disconnected;
-                display.textContent = text;
+                display.textContent = message || text;
                 display.className = `test-result-display ${className}`;
             }
         }
@@ -375,9 +479,39 @@
                     const panel = UI.devicePanels[device.id - 1];
                     panel.selectBtn.addEventListener('click', () => this.selectPort(device.id));
                     panel.connectBtn.addEventListener('click', () => this.toggleConnection(device.id));
+                    panel.snInput.addEventListener('keydown', (event) => {
+                        if (event.key === 'Enter') {
+                            event.preventDefault(); // Prevent default form submission
+                            this.startTestFromInput(device.id);
+                        }
+                    });
                 });
                 //UI.switchInterfaceBtn.addEventListener('click', () => window.location.href = 'index.html');
                 UI.switchInterfaceBtn.addEventListener('click', () => { const targetPage = 'index.html'; window.location.href = `${targetPage}?v=${Date.now()}`;});
+            }
+
+            async startTestFromInput(id) {
+                const device = this.devices[id - 1];
+                
+                if (device.inProgress) {
+                    this.uiManager.log(`设备 ${id} 正在测试中，请勿重复操作。`);
+                    return;
+                }
+                if (!device.serial.connected) {
+                    this.uiManager.updateDeviceMessage(id, '❌ 串口未连接', 'error');
+                    return;
+                }
+
+                const panel = UI.devicePanels[id - 1];
+                const enteredSn = panel.snInput.value.trim();
+                const isSimInserted = panel.simCheckbox.checked;
+
+                if (enteredSn.length !== 20) {
+                    this.uiManager.updateDeviceMessage(device.id, '❌ SN错误', 'error');
+                    return;
+                }else{this.uiManager.updateDeviceMessage(device.id, '✅ 已连接', 'success');}
+
+                this.testRunner.startTest(device, this, enteredSn, isSimInserted);
             }
 
             async loadSavedPorts() {
@@ -432,7 +566,6 @@
                 if (await device.serial.connect(CONFIG.BAUD_RATE)) {
                     this.uiManager.updateDeviceMessage(device.id, '✅ 已连接', 'success');
                     this.uiManager.showTestResult(device.id, 'connected');
-                    this.testRunner.startTest(device, this);
                 } else {
                     this.uiManager.updateDeviceMessage(device.id, '❌ 连接失败', 'error');
                 }
@@ -445,6 +578,7 @@
                 }
                 await device.serial.disconnect();
                 this.uiManager.updateDeviceMessage(device.id, 'ℹ️ 已断开');
+                UI.devicePanels[device.id - 1].snInput.value = '';
                 if (!keepResultOnDisplay) { // 如果不需要保持结果显示，则重置显示
                      device.record = null;
                      this.uiManager.showTestResult(device.id, 'disconnected');
@@ -467,23 +601,25 @@
                 device.inProgress = false;
                 if (device.record) this.uiManager.clearTestResult(device.id);
                 device.record = null;
-                this.uiManager.updateDeviceMessage(device.id, 'ℹ️ 测试已取消');
+                //this.uiManager.updateDeviceMessage(device.id, 'ℹ️ 测试已取消');
                 this.uiManager.log(`⏹️ 设备 ${device.id}: 测试已取消`);
             }
 
-            async startTest(device, app) {
+            async startTest(device, app, enteredSn, isSimInserted) {
                 if (device.inProgress) return;
 
                 this.uiManager.clearTestResult(device.id);
                 device.record = null;
                 device.inProgress = true;
+                device.enteredSn = enteredSn;
+                device.isSimInserted = isSimInserted;
                 app.uiManager.updateButtons(app.devices);
-                this.uiManager.updateDeviceMessage(device.id, '⏳ 等待设备启动...');
+                //this.uiManager.updateDeviceMessage(device.id, '⏳ 等待设备启动...');
                 this.uiManager.showTestResult(device.id, 'waiting');
 
                 const timeoutId = setTimeout(() => {
                     if (!device.inProgress) return;
-                    this.uiManager.updateDeviceMessage(device.id, '✅ 正在测试...');
+                    //this.uiManager.updateDeviceMessage(device.id, '✅ 正在测试...');
                     this.listenAndSendCommand(device, app);
                 }, CONFIG.TIMEOUTS.COMMAND);
                 this.testTimeouts.set(device.id, timeoutId);
@@ -508,7 +644,7 @@
                 const onError = (e) => {
                     if (device.inProgress) {
                         this.uiManager.log(`❌ 设备 ${device.id} 串口读取异常: ${e.message}`);
-                        this.finishTest(device, { serial: false, web: false, status: false }, app);
+                        this.finishTest(device, { sn: null, serial: false, web: false, status: false, skipReport: true }, app);
                     }
                 };
 
@@ -531,7 +667,7 @@
                         const responseTimeout = setTimeout(() => {
                             if (!responseReceived && i === 1) { // 最后一次重试失败
                                 this.uiManager.log(`❌ 设备 ${device.id}: 第二次响应超时`);
-                                this.finishTest(device, { serial: false, web: false, status: false }, app);
+                                this.finishTest(device, { sn: null, serial: false, web: false, status: false, skipReport: true }, app);
                             }
                             resolve();
                         }, CONFIG.TIMEOUTS.RESPONSE);
@@ -545,9 +681,16 @@
                 const iccid = buffer.match(/<1,ICC;([^>]*)>/)?.[1]?.trim() || '';
                 const imei = buffer.match(/<1,IME;([^>]+)>/)?.[1]?.trim() || null;
 
+                if (sn !== device.enteredSn) {
+                    this.uiManager.log(`❌ 设备 ${device.id}: SN不匹配。输入: ${device.enteredSn}, 设备返回: ${sn}`);
+                    this.uiManager.showTestResult(device.id, 'fail', 'SN不匹配');
+                    this.finishTest(device, { sn: sn, serial: true, status: false, errorReason: 'SN不匹配', skipReport: true }, app);
+                    return;
+                }
+
                 if (!sn || !imei) {
                     this.uiManager.log(`❌ 设备 ${device.id}: 响应格式不正确或SN/IMEI为空: ${buffer}`);
-                    this.finishTest(device, { sn: sn || '未知', serial: false, web: false, status: false }, app);
+                    this.finishTest(device, { sn: null, serial: true, web: false, status: false, skipReport: true }, app);
                     return;
                 }
 
@@ -555,13 +698,19 @@
                 this.uiManager.addOrUpdateTestResult(device.record);
                 this.uiManager.log(`✅ 设备 ${device.id}: 收到SN: ${sn}, IMEI: ${imei}, ICCID: ${iccid || '无'}`);
 
-                if (!iccid) {
-                    this.uiManager.log(`⚠️ 设备 ${device.id}: 未检测到SIM卡`);
+                if (device.isSimInserted) {
+                    if (!iccid) {
+                        this.uiManager.log(`❌ 设备 ${device.id}: 已勾选插卡但未读到ICCID`);
+                        device.record.iccid = '异常';
+                        this.finishTest(device, { ...device.record, web: false, status: false }, app);
+                    } else {
+                        await this.startWebTest(device, app);
+                    }
+                } else {
+                    this.uiManager.log(`ℹ️ 设备 ${device.id}: 跳过ICCID和网络测试`);
                     device.record.iccid = '未插卡';
                     device.record.web = '未插卡';
                     this.finishTest(device, { ...device.record, status: true }, app);
-                } else {
-                    await this.startWebTest(device, app);
                 }
             }
 
@@ -598,7 +747,7 @@
                 device.inProgress = false;
 
                 // 确保即使在早期失败（超时等）时也能创建一个带有时间戳的完整记录
-                const baseRecord = device.record || {
+                const baseRecord = {
                     deviceId: device.id,
                     timestamp: new Date().toLocaleString(),
                     sn: null,
@@ -608,15 +757,15 @@
                     web: false,
                     status: false
                 };
-                device.record = { ...baseRecord, ...result };
+                device.record = { ...baseRecord, ...device.record, ...result };
 
                 const isSuccess = device.record.status === true;
                 this.uiManager.addOrUpdateTestResult(device.record);
-                this.uiManager.showTestResult(device.id, isSuccess ? 'pass' : 'fail');
+                this.uiManager.showTestResult(device.id, isSuccess ? 'pass' : 'fail', result.errorReason);
                 this.uiManager.updateButtons(app.devices);
                 this.uiManager.log(`📊 设备 ${device.id}: 测试完成 - ${isSuccess ? '通过' : '失败'}`);
 
-                if (CONFIG.AUTO_REPORT && isSuccess) {
+                if (CONFIG.AUTO_REPORT && !device.record.skipReport) {
                     await this.reportResult(device.record);
                 }
 
@@ -628,17 +777,24 @@
                     this.uiManager.log(`设备 ${device.id}: 发送最终指令失败: ${e.message}`);
                 }
 
-                if (isSuccess) {
-                    await app.disconnectDevice(device, true);
-                } else {
-                    this.uiManager.updateDeviceMessage(device.id, '❌ 测试失败', 'error');
+                if (!isSuccess) {
+                    //this.uiManager.updateDeviceMessage(device.id, '❌ 测试失败', 'error');
                 }
+                
+                UI.devicePanels[device.id - 1].snInput.value = '';
             }
 
             async reportResult(record) {
+                if (!record.sn) {
+                    this.uiManager.log(`- 设备 ${record.deviceId}: 上报跳过，缺少SN`);
+                    record.reportFailed = true;
+                    this.uiManager.addOrUpdateTestResult(record);
+                    return;
+                }
+
                 this.uiManager.log(`📮 设备 ${record.sn}: 正在上报测试结果...`);
                 try {
-                    const reportData = { deviceId: 'DGS-100', results: [{ sn: record.sn, imei: record.imei, iccid: record.iccid, serialTest: record.serial === true ? 'pass' : 'fail', webTest: record.web === true ? 'pass' : 'fail', overallStatus: record.status === true ? 'pass' : 'fail' }] };
+                    const reportData = { deviceId: 'DGS-100', results: [{ sn: record.sn, imei: record.imei, iccid: record.iccid === '异常' ? 'fail' : record.iccid === '未插卡' ? 'fail' : record.iccid, serialTest: record.serial === true ? 'pass' : 'fail', webTest: record.web === true ? 'pass' : 'fail', overallStatus: record.status === true ? 'pass' : 'fail' }] };
                     const response = await fetch(CONFIG.URLS.REPORT, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json', 'User-Agent': 'DGS-100-Tester/1.0' },
