@@ -29,27 +29,28 @@
         .fail { background: #f8d7da; color: #dc3545; }
         .testing { background: #fff3cd; color: #856404; }
         #logBox { margin: 10px 0; padding: 10px; border: 1px solid #ddd; height: 150px; overflow-y: auto; background: #f9f9f9; color: #333; font-family: monospace; white-space: pre-wrap; word-break: break-all; border-radius: 4px; }
-        #testResultDisplay {
-            margin: 15px 0; padding: 20px; border-radius: 8px; text-align: center; font-size: 30px; font-weight: bold; box-shadow: 0 3px 6px rgba(0,0,0,0.1); display: none;
-        }
+        #testResultDisplay { margin: 15px 0; padding: 20px; border-radius: 8px; text-align: center; font-size: 30px; font-weight: bold; box-shadow: 0 3px 6px rgba(0,0,0,0.1); display: none;}
         #testResultDisplay.pass { background: linear-gradient(135deg, #28a745, #20c997); color: white; border: 2px solid #1e7e34; } /* #212529 */
         #testResultDisplay.fail { background: linear-gradient(135deg, #dc3545, #ff6b6b); color: white; border: 2px solid #bd2130; }
-        #testResultDisplay.waiting { background: linear-gradient(135deg, #ffc107, #ffb347); color: white; border: 2px solid #e0a800; display: block; }
+        #testResultDisplay.waiting { background: linear-gradient(135deg, #007bff, #3da9fc); color: white; border: 2px solid #0056b3; display: block; }
         input[type="text"] { width: 180px; padding: 6px; margin-left: 8px; border: 1px solid #ddd; border-radius: 3px; }
+        #scanInput {flex-grow: 1; max-width: 340px; padding: 15px; font-size: 1.9em; border: 2px solid #ccc; border-radius: 4px; transition: border-color 0.2s, box-shadow 0.2s;}
+        #scanInput:focus { border-color: #007bff; box-shadow: 0 0 8px rgba(0, 123, 255, 0.3); outline: none; }
+        #snLabel { font-size: 3em; font-weight: 800; }
     </style>
 </head>
 <body>
-<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
     <h1>单板测试</h1>
-    <div style="display: flex; gap: 10px;">
-        <button class="btn" id="switchInterfaceBtn" style="background: #28a745; color: #fff; font-weight: 600;">切换到整机测试</button>
+    <div style="display: flex; align-items: center; gap: 10px;">
+        <button class="btn" id="switchInterfaceBtn" style="background: #28a745; color: #fff; font-weight: 600; margin-left: 15px;">切换到整机测试</button>
     </div>
 </div>
 
 <div class="panel">
     <div class="flex">
         <div class="panel panel-green">
-            <h4>测试架串口-D</h4>
+            <h2>配置测试架（SERIAL-D）</h2>
             <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
                 <button class="btn" id="selectStatusBtn">选择串口</button>
                 <button class="btn" id="toggleStatusBtn">连接</button>
@@ -57,17 +58,29 @@
             </div>
         </div>
         <div class="panel panel-blue">
-            <h4>数据棒串口-A</h4>
+            <h2>配置数据棒（SERIAL-A）   
+                <input type="checkbox" id="cardInsertedCheckbox" checked style="transform: scale(1.5); margin-right: 5px; cursor: pointer;">
+                <label for="cardInsertedCheckbox" style="cursor: pointer; font-size: 0.8em; user-select: none;">已插卡</label> 
+            </h2>
             <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
                 <button class="btn" id="selectTestBtn">选择串口</button>
                 <button class="btn" id="toggleTestBtn">连接</button>
-                <label for="scanInput">SN:</label>
-                <input type="text" id="scanInput" placeholder="请使用扫码枪扫描...">
+                
                 <div id="testMsg"></div>
+            </div>
+        </div>
+        <div class="panel panel-green">
+            <h2></h2>
+            <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+                <label for="scanInput" id="snLabel">SN:</label>
+                <input type="text" id="scanInput" placeholder="请使用扫码枪扫描...">
+                <div id="snMsg"></div>
             </div>
         </div>
     </div>
 </div>
+
+<div id="testResultDisplay">等待测试...</div>
 
 <div class="panel">
     <table>
@@ -80,7 +93,6 @@
 
 <div id="logBox">测试日志...</div>
 
-<div id="testResultDisplay">等待测试...</div>
 
 <script>
 const config = {
@@ -101,6 +113,7 @@ const ui = {
     toggleTestBtn: document.getElementById('toggleTestBtn'),
     scanInput: document.getElementById('scanInput'),
     testMsg: document.getElementById('testMsg'),
+    snMsg: document.getElementById('snMsg'),
     resultBody: document.getElementById('resultBody'),
     logBox: document.getElementById('logBox'),
     testResultDisplay: document.getElementById('testResultDisplay')
@@ -236,7 +249,7 @@ const UIManager = {
         ui.toggleTestBtn.disabled = !app.serial.test.port && !app.serial.test.connected;
         ui.selectTestBtn.disabled = this.state.test.inProgress;
         ui.scanInput.disabled = this.state.test.inProgress || !this.state.device.ready || !app.serial.test.connected;
-        ui.scanInput.placeholder = !this.state.device.ready ? '设备未就绪，请连接状态串口...' : !app.serial.test.connected ? '请连接测试串口...' : '请使用扫码枪扫描...';
+        ui.scanInput.placeholder = !this.state.device.ready ? '未就绪，请配置测试架...' : !app.serial.test.connected ? '请配置数据棒...' : '请使用扫码枪扫描...';
     },
     addOrUpdateTestResult(record) {
         if (!record.row) return;
@@ -256,16 +269,8 @@ const UIManager = {
             { text: record.sn, className: record.snMismatch ? 'fail' : record.snMatch ? 'pass' : '' },
             { text: record.imei, className: record.imei !== '待测试' && record.imei !== '-' ? 'pass' : record.imeiFailed ? 'fail' : '' },
             { text: record.iccid, className: record.iccid === '未插卡' || record.iccidFailed ? 'fail' : record.iccid !== '待测试' && record.iccid !== '-' ? 'pass' : '' },
-            getStatus(record.serial),
-            getStatus(record.vout),
-            getStatus(record.iout),
-            getStatus(record.ai0),
-            getStatus(record.ai1),
-            getStatus(record.ai2),
-            getStatus(record.powerLight),
-            getStatus(record.rs485Light),
-            getStatus(record.networkLight),
-            getStatus(record.web),
+            getStatus(record.serial),getStatus(record.vout),getStatus(record.iout),getStatus(record.ai0),getStatus(record.ai1),
+            getStatus(record.ai2),getStatus(record.powerLight),getStatus(record.rs485Light),getStatus(record.networkLight),getStatus(record.web),
             record.status === 'pending' ? { text: '正在测试...', className: 'testing' } : getStatus(record.status),
             record.reportFailed ? { text: '未上报', className: 'fail' } : record.reported ? { text: '已上报', className: 'pass' } : { text: '待上报', className: 'testing' }
         ];
@@ -330,7 +335,9 @@ const RecordManager = {
                         imei: (r.imei && r.imei !== '待测试') ? r.imei : undefined,
                     };
 
-                    if (r.iccid && r.iccid !== '未插卡' && r.iccid !== '待测试') {
+                    if (r.iccidFailed) {
+                        payload.iccid = 'fail';
+                    } else if (r.iccid && r.iccid !== '未插卡' && r.iccid !== '待测试') {
                         payload.iccid = r.iccid;
                     }
 
@@ -367,14 +374,7 @@ const app = {
     state: { 
         reporting: false, 
         test: { 
-            inProgress: false, 
-            currentSN: '', 
-            currentStep: '', 
-            stepTimeouts: {}, 
-            stepRetryCount: {}, 
-            skipWebTest: false,
-            hasFailure: false,
-            failureItems: []
+            inProgress: false, currentSN: '', currentStep: '', stepTimeouts: {}, stepRetryCount: {}, skipWebTest: false,hasFailure:false,failureItems:[]
         }, 
         device: { ready: false, status: null, colorR: 0 } 
     },
@@ -405,18 +405,20 @@ const app = {
             if (e.key === 'Enter') {
                 e.preventDefault();
                 const value = ui.scanInput.value.trim();
-                if (value && !this.state.test.inProgress) {
-                    TestRunner.startTest(value, this);
-                } else if (this.state.test.inProgress) {
-                    UIManager.log('⚠️ 测试进行中，请勿重复扫码');
-                }
+
+                if (this.state.test.inProgress) { UIManager.log('⚠️ 测试进行中，请勿重复扫码'); return;}
+
+                if (!value || value.length !== 20) { UIManager.update('snMsg', '❌ SN错误', 'error'); return;}
+
+                UIManager.update('testMsg', '✅ 设备已就绪', 'info');
+                TestRunner.startTest(value, this);
             }
         });
         ui.scanInput.addEventListener('blur', () => {
             if (!this.state.test.inProgress) setTimeout(() => ui.scanInput.focus(), 100);
         });
         //document.getElementById('switchInterfaceBtn').addEventListener('click', () => window.location.href = 'complete_machine.html');
-        document.getElementById('switchInterfaceBtn').addEventListener('click', () => { const targetPage = 'complete_machine.html'; window.location.href = `${targetPage}?v=${Date.now()}`;});
+        document.getElementById('switchInterfaceBtn').addEventListener('click', () => { const targetPage = 'complete_machine.html'; window.location.href = `${targetPage}?v=${Date.now()}`});
     },
     async loadSavedPorts() {
         const load = async type => {
@@ -463,6 +465,7 @@ const app = {
             UIManager.update(`${type}Msg`, '⌛ 连接中...');
             if (await manager.connect(config.baudRates[type])) {
                 UIManager.update(`${type}Msg`, '✅ 已连接', 'success');
+                if (app.state.device.ready) {setTimeout(() => {ui.scanInput.focus();}, 100);}
                 if (type === 'status') TestRunner.startStatusReadLoop(this);
             } else {
                 UIManager.update(`${type}Msg`, '❌ 连接失败', 'error');
@@ -484,7 +487,7 @@ const TestRunner = {
         app.state.test.hasFailure = false;
         app.state.test.failureItems = [];
         UIManager.updateButtons(app);
-        UIManager.update('testMsg', '⏳ 正在测试...');
+        //UIManager.update('testMsg', '⏳ 正在测试...');
         UIManager.clearLog();
         UIManager.log(`🚀 开始测试 SN: ${sn}`);
         UIManager.showTestResult('waiting');
@@ -599,13 +602,16 @@ const TestRunner = {
         this.clearStepTimeout('WAITING_FOR_ICCID', app);
         const receivedValue = match[1].trim();
         if (receivedValue.toLowerCase() === 'error' || receivedValue === '' || receivedValue === ';') {
-            UIManager.log(`❌ 收到 ICC ${receivedValue === '' || receivedValue === ';' ? '无值，未插卡' : 'ERROR'}`);
+            UIManager.log(`❌ 收到 ICC ${receivedValue === '' || receivedValue === ';' ? '无值' : 'ERROR'}`);
             this.retryOrFail('WAITING_FOR_ICCID', sn, app, () => {
                 app.serial.test.buffer = '';
                 app.serial.test.writer.write(new TextEncoder().encode('ccmd ICC\r\n'));
             }, () => {
-                RecordManager.createOrUpdate({ sn, iccid: '未插卡', iccidFailed: true });
-                this.completeSerialTest(sn, app);
+                UIManager.log('❌ 读取 ICCID 失败');
+                RecordManager.createOrUpdate({ sn, iccid: '异常', iccidFailed: true });
+                app.state.test.hasFailure = true;
+                app.state.test.failureItems.push('ICCID');
+                this.skipRemainingTests(sn, app);
             });
             return;
         } else {
@@ -641,6 +647,14 @@ const TestRunner = {
         }
     },
     async startIccidTest(sn, app) {
+        const cardInserted = document.getElementById('cardInsertedCheckbox').checked;
+        if (!cardInserted) {
+            UIManager.log('ℹ️ 未插卡，跳过 ICCID 测试');
+            RecordManager.createOrUpdate({ sn, iccid: '未插卡' });
+            await this.completeSerialTest(sn, app);
+            return;
+        }
+
         app.state.test.currentStep = 'WAITING_FOR_ICCID';
         try {
             await app.serial.test.writer.write(new TextEncoder().encode('ccmd ICC\r\n'));
@@ -648,13 +662,18 @@ const TestRunner = {
             this.setStepTimeout('WAITING_FOR_ICCID', () => this.retryOrFail('WAITING_FOR_ICCID', sn, app, () => {
                 app.serial.test.writer.write(new TextEncoder().encode('ccmd ICC\r\n'));
             }, () => {
-                RecordManager.createOrUpdate({ sn, iccid: '未插卡', iccidFailed: true });
-                this.completeSerialTest(sn, app);
+                UIManager.log('❌ ICCID 读取超时');
+                RecordManager.createOrUpdate({ sn, iccid: '异常', iccidFailed: true });
+                app.state.test.hasFailure = true;
+                app.state.test.failureItems.push('ICCID');
+                this.skipRemainingTests(sn, app);
             }), config.timeouts.iccid, app);
         } catch (error) {
             UIManager.log(`❌ 发送 ICCID 查询命令失败: ${error.message}`);
-            RecordManager.createOrUpdate({ sn, iccid: '未插卡', iccidFailed: true });
-            await this.completeSerialTest(sn, app);
+            RecordManager.createOrUpdate({ sn, iccid: '异常', iccidFailed: true });
+            app.state.test.hasFailure = true;
+            app.state.test.failureItems.push('ICCID');
+            await this.skipRemainingTests(sn, app);
         }
     },
     async startComponentAndLedTests(sn, app) {
@@ -710,7 +729,7 @@ const TestRunner = {
                 await delay(500);
                 const colorR = await getAvgColorR();
                 const pass = (colorR / test.divisor) > test.threshold;
-                UIManager.log(`📊 ${test.name} Color_R 平均值: ${colorR.toFixed(3)}, 结果: ${pass ? '正常' : '异常'}${retryCount > 0 ? ` (重试 ${retryCount}/${config.maxRetries})` : ''}`);
+                UIManager.log(`📊 ${test.name} Color_R 平均值: ${colorR.toFixed(3)}, 结果: ${pass ? '正常' : '异常'}${(retryCount > 0 ? ` (重试 ${retryCount}/${config.maxRetries})` : '')}`);
                 return { pass, colorR };
             };
 
@@ -759,7 +778,7 @@ const TestRunner = {
         return encrypted ? `${config.urls.test}${encrypted}` : null;
     },
     async startWebTest(sn, app) {
-        UIManager.update('testMsg', '🔗 正在测试网络连接...');
+        //UIManager.update('testMsg', '🔗 正在测试网络连接...');
         const testUrl = await this._generateTestUrl(sn);
         let webResult = false;
         if (testUrl) {
@@ -794,6 +813,7 @@ const TestRunner = {
         UIManager.log('⚠️ 检测到异常，跳过后续测试步骤');
         const currentRecord = app.records.find(r => r.sn === sn);
         const skippedItems = {
+            serial:currentRecord?.serial === 'pending' ? '-' : currentRecord?.serial,
             vout: currentRecord?.vout === 'pending' ? '-' : currentRecord?.vout,
             iout: currentRecord?.iout === 'pending' ? '-' : currentRecord?.iout,
             ai0: currentRecord?.ai0 === 'pending' ? '-' : currentRecord?.ai0,
@@ -822,7 +842,7 @@ const TestRunner = {
         
         RecordManager.createOrUpdate({ ...result, status: finalStatus, isNewTest: false });
         UIManager.log(`📊 测试完成: ${finalStatus ? '正常' : '异常'}`);
-        UIManager.update('testMsg', `✅ 测试完成: ${finalStatus ? '正常' : '异常'}`, finalStatus ? 'success' : 'error');
+        //UIManager.update('testMsg', `✅ 测试完成: ${finalStatus ? '正常' : '异常'}`, finalStatus ? 'success' : 'error');
         UIManager.showTestResult(finalStatus);
         
         if (config.autoReport) {
