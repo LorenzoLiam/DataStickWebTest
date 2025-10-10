@@ -166,7 +166,9 @@ class SerialManager {
         this.connected = false;
         this.buffer = '';
         this.readLoopActive = false;
+        this.isDisconnecting = false;
     }
+    
     async select() {
         try {
             this.port = await navigator.serial.requestPort();
@@ -175,51 +177,168 @@ class SerialManager {
             return false;
         }
     }
+    
     async connect(baudRate) {
         if (!this.port) return false;
+        
+        // 如果正在断开连接,等待完成
+        if (this.isDisconnecting) {
+            await new Promise(resolve => setTimeout(resolve, 1000));
+        }
+        
         try {
-            await this.port.open({ baudRate });
+            // 检查端口是否已经打开
+            if (this.port.readable || this.port.writable) {
+                UIManager.log(`⚠️ ${this.type} 端口未正常关闭,尝试重置...`);
+                await this.forceClose();
+                await new Promise(resolve => setTimeout(resolve, 500));
+            }
+            
+            await this.port.open({ 
+                baudRate,
+                dataBits: 8,
+                stopBits: 1,
+                parity: 'none',
+                flowControl: 'none'
+            });
+            
             this.writer = this.port.writable?.getWriter();
             this.connected = true;
             return true;
         } catch (e) {
-            console.error(`${this.type} connection failed:`, e);
+            console.error(`${this.type} connection error:`, e);
+            
+            // 如果是 InvalidStateError,说明端口可能被占用
+            if (e.name === 'InvalidStateError') {
+                UIManager.log(`❌ ${this.type} 端口被占用,尝试强制释放...`);
+                await this.forceClose();
+            }
+            
             return false;
         }
     }
+    
     async disconnect() {
-        await this.stopReadLoop();
-        if (this.writer) { try { await this.writer.close(); } catch {} finally { this.writer = null; } }
-        if (this.port) { try { await this.port.close(); } catch {} }
+        if (this.isDisconnecting) return;
+        
+        this.isDisconnecting = true;
+        
+        try {
+            // 1. 停止读取循环
+            await this.stopReadLoop();
+            await new Promise(resolve => setTimeout(resolve, 100));
+            
+            // 2. 关闭写入器
+            if (this.writer) {
+                try {
+                    await this.writer.close();
+                } catch (e) {
+                    console.error(`${this.type} writer close error:`, e);
+                } finally {
+                    this.writer = null;
+                }
+            }
+            
+            // 3. 等待资源释放
+            await new Promise(resolve => setTimeout(resolve, 200));
+            
+            // 4. 关闭端口
+            if (this.port) {
+                try {
+                    await this.port.close();
+                } catch (e) {
+                    console.error(`${this.type} port close error:`, e);
+                }
+            }
+            
+            this.connected = false;
+            this.buffer = '';
+            
+        } catch (e) {
+            UIManager.log(`❌ ${this.type} 断开异常: ${e.message}`);
+            console.error(`${this.type} disconnect error:`, e);
+        } finally {
+            this.isDisconnecting = false;
+        }
+    }
+    
+    async stopReadLoop() {
+        if (!this.readLoopActive) return;
+        
+        this.readLoopActive = false;
+        
+        if (this.reader) {
+            try {
+                await this.reader.cancel();
+            } catch (e) {
+                console.error(`${this.type} reader cancel error:`, e);
+            }
+            
+            try {
+                this.reader.releaseLock();
+            } catch {}
+            finally {
+                this.reader = null;
+            }
+        }
+        
+        await new Promise(resolve => setTimeout(resolve, 100));
+    }
+    
+    // 强制关闭方法
+    async forceClose() {
+        this.readLoopActive = false;
+        
+        if (this.reader) {
+            try { this.reader.releaseLock(); } catch {}
+            this.reader = null;
+        }
+        
+        if (this.writer) {
+            try { await this.writer.close(); } catch {}
+            this.writer = null;
+        }
+        
+        if (this.port) {
+            try { 
+                await this.port.close();
+            } catch (e) {
+                console.error(`${this.type} force close error:`, e);
+            }
+        }
+        
         this.connected = false;
         this.buffer = '';
     }
+    
     async readLoop(onData, onError) {
-        if (!this.port?.readable || !this.connected) return;
+        if (!this.port?.readable || !this.connected) {
+            UIManager.log(`⚠️ ${this.type} 无法启动读取循环`);
+            return;
+        }
+        
         this.readLoopActive = true;
-        this.reader = this.port.readable.getReader();
+        
         try {
+            this.reader = this.port.readable.getReader();
+            
             while (this.readLoopActive) {
                 const { value, done } = await this.reader.read();
                 if (done) break;
                 if (onData) onData(new TextDecoder().decode(value));
             }
         } catch (e) {
-            if (this.readLoopActive && onError) onError(e);
+            if (this.readLoopActive && onError) {
+                onError(e);
+            }
         } finally {
             if (this.reader) {
-                this.reader.releaseLock();
+                try {
+                    this.reader.releaseLock();
+                } catch {}
                 this.reader = null;
             }
             this.readLoopActive = false;
-        }
-    }
-    async stopReadLoop() {
-        if (this.readLoopActive) {
-            this.readLoopActive = false;
-            if (this.reader) {
-                try { await this.reader.cancel(); } catch {}
-            }
         }
     }
 }
