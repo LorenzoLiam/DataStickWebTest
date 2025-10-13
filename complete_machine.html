@@ -14,7 +14,7 @@
             --border-radius: 8px;
             --shadow-sm: 0 2px 4px rgba(0,0,0,0.05);
         }
-        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; padding: 20px; background: #f4f7f6; color: #333; line-height: 1.6; }
+        body { font-family: system-ui, -apple-system, Roboto, sans-serif; padding: 5px 20px; background: #f4f7f6; color: #333; line-height: 1.6; }
         .btn { margin: 5px; padding: 8px 15px; border: 1px solid #ccc; border-radius: 4px; cursor: pointer; background: #fff; transition: background-color 0.2s, box-shadow 0.2s; }
         .btn:hover:not(:disabled) { background: #e9e9e9; box-shadow: 0 1px 2px rgba(0,0,0,0.1); }
         .btn:disabled { opacity: 0.6; cursor: not-allowed; background: #f0f0f0; }
@@ -38,24 +38,14 @@
         .test-result-display.fail { background: linear-gradient(135deg, #dc3545, #ff6b6b); color: white; border: 2px solid #bd2130; }
         .test-result-display.waiting { background: linear-gradient(135deg, #007bff, #3da9fc); color: white; border: 2px solid #0056b3; }
         .test-result-display.default { background: #f8f9fa; color: #6c757d; border: 2px solid #dee2e6; }
-        .sim-label {
-            font-size: 18px;
-            display: flex;
-            align-items: center;
-            cursor: pointer;
-            margin-left: auto;
-            white-space: nowrap;
-        }
-        .sim-label input {
-            transform: scale(1.5);
-            margin-right: 5px;
-        }
+        .sim-label { font-size: 18px; display: flex; align-items: center; cursor: pointer; margin-left: auto; white-space: nowrap; }
+        .sim-label input { transform: scale(1.5); margin-right: 5px; }
     </style>
 </head>
 <body>
 <!-- 主控界面 -->
-<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
-    <h1>整机测试</h1>
+<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px;">
+    <h1 style="margin: 5px 0;">整机测试</h1>
     <button id="switchInterfaceBtn" class="btn" style="background: var(--color-success); color: white; font-weight: bold;">切换到单板测试</button>
 </div>
 
@@ -63,7 +53,7 @@
 <div class="panel">
     <div class="grid">
         <div class="panel panel-green">
-            <h2>设备A（SERIAL-A）</h2>
+            <h2 style="margin: 5px 0;">设备A（SERIAL-A）</h2>
             <div style="display: flex; align-items: center; margin-bottom: 5px;">
                 <label for="snInput4" style="margin-right: 5px; font-weight: bold; font-size: 30px;">SN:</label>
                 <input type="text" id="snInput1" placeholder="请连接设备..." style="flex-grow: 1; padding: 10px; font-size: 24px;" disabled>
@@ -76,7 +66,7 @@
             </div>
         </div>
         <div class="panel panel-blue">
-            <h2>设备B（SERIAL-B）</h2>
+            <h2 style="margin: 5px 0;">设备B（SERIAL-B）</h2>
             <div style="display: flex; align-items: center; margin-bottom: 5px;">
                 <label for="snInput4" style="margin-right: 5px; font-weight: bold; font-size: 30px;">SN:</label>
                 <input type="text" id="snInput2" placeholder="请连接设备..." style="flex-grow: 1; padding: 10px; font-size: 24px;" disabled>
@@ -89,7 +79,7 @@
             </div>
         </div>
         <div class="panel panel-green">
-            <h2>设备C（SERIAL-C）</h2>
+            <h2 style="margin: 5px 0;">设备C（SERIAL-C）</h2>
             <div style="display: flex; align-items: center; margin-bottom: 5px;">
                 <label for="snInput4" style="margin-right: 5px; font-weight: bold; font-size: 30px;">SN:</label>
                 <input type="text" id="snInput3" placeholder="请连接设备..." style="flex-grow: 1; padding: 10px; font-size: 24px;" disabled>
@@ -102,7 +92,7 @@
             </div>
         </div>
         <div class="panel panel-blue">
-            <h2>设备D（SERIAL-D）</h2>
+            <h2 style="margin: 5px 0;">设备D（SERIAL-D）</h2>
             <div style="display: flex; align-items: center; margin-bottom: 5px;">
                 <label for="snInput4" style="margin-right: 5px; font-weight: bold; font-size: 30px;">SN:</label>
                 <input type="text" id="snInput4" placeholder="请连接设备..." style="flex-grow: 1; padding: 10px; font-size: 24px;" disabled>
@@ -122,15 +112,15 @@
     <div style="display: flex; flex-direction: column; align-items: center; gap: 15px; margin: 15px 0;">
         
         <div style="display: flex; justify-content: center; width: 80%;">
-            <div id="testResultDisplay-1" class="test-result-display default" style="width: 300px; margin-left: 160px;">设备A未连接</div>
-            <div id="testResultDisplay-3" class="test-result-display default" style="width: 300px; margin-left: 120px;">设备C未连接</div>
+            <div id="testResultDisplay-1" class="test-result-display default" style="width: 300px; margin-left: 160px;">端口A未连接</div>
+            <div id="testResultDisplay-3" class="test-result-display default" style="width: 300px; margin-left: 120px;">端口C未连接</div>
         </div>
 
         <img id="deviceImage4" src="image.png" alt="设备图片" style="width: 50%; border-radius: 8px; box-shadow: var(--shadow-sm);"> 
 
         <div style="display: flex; justify-content: center; width: 80%;">
-            <div id="testResultDisplay-2" class="test-result-display default" style="width: 300px; margin-left: 160px;">设备B未连接</div>
-            <div id="testResultDisplay-4" class="test-result-display default" style="width: 300px; margin-left: 120px;">设备D未连接</div>
+            <div id="testResultDisplay-2" class="test-result-display default" style="width: 300px; margin-left: 160px;">端口B未连接</div>
+            <div id="testResultDisplay-4" class="test-result-display default" style="width: 300px; margin-left: 120px;">端口D未连接</div>
         </div>
 
     </div>
@@ -156,9 +146,10 @@
             AES: { KEY_STRING: "me%ov2Ied|eicegh", IV_STRING: "me%ov2Ied|eicegh" },
             URLS: { TEST: "http://gw.3wlink.cn:22011/?dgwkey=", REPORT: "https://daantest.free.beeceptor.com" },
             BAUD_RATE: 115200,
-            TIMEOUTS: { COMMAND: 15000, RESPONSE: 5000, FETCH: 5000, REPORT: 10000 },
+            TIMEOUTS: { COMMAND: 5000, RESPONSE: 1000, FETCH: 5000, REPORT: 10000 , TEST_URL_WAIT: 10000},
             AUTO_REPORT: true,
             DEVICE_COUNT: 4,
+            RETRY_COUNT: 2,
             LOG_LIMIT: 100,
         };
 
@@ -344,7 +335,7 @@
 
                 if (record.errorReason === 'SN不匹配') {
                     row.cells[1].textContent = record.timestamp;
-                    row.cells[2].textContent = record.sn || '未知'; // Device SN
+                    row.cells[2].textContent = record.sn || '未知';
                     row.cells[2].className = 'fail';
                     row.cells[3].textContent = '-';
                     row.cells[3].className = '';
@@ -434,10 +425,11 @@
                     waiting: { text: `⏳ 设备${String.fromCharCode(64 + deviceId)}正在测试...`, className: 'waiting' },
                     pass: { text: `✅ 设备${String.fromCharCode(64 + deviceId)}-通过`, className: 'pass' },
                     fail: { text: `❌ 设备${String.fromCharCode(64 + deviceId)}-不通过`, className: 'fail' },
-                    connected: { text: `设备${String.fromCharCode(64 + deviceId)}已连接`, className: 'default' },
-                    disconnected: { text: `设备${String.fromCharCode(64 + deviceId)}未连接`, className: 'default' }
+                    'no-device': { text: `❌ 设备${String.fromCharCode(64 + deviceId)}-未插入`, className: 'fail' },
+                    connected: { text: `端口${String.fromCharCode(64 + deviceId)}已连接`, className: 'default' },
+                    disconnected: { text: `端口${String.fromCharCode(64 + deviceId)}未连接`, className: 'default' }
                 };
-                
+
                 const { text, className } = states[state] || states.disconnected;
                 display.textContent = message || text;
                 display.className = `test-result-display ${className}`;
@@ -481,7 +473,7 @@
                     panel.connectBtn.addEventListener('click', () => this.toggleConnection(device.id));
                     panel.snInput.addEventListener('keydown', (event) => {
                         if (event.key === 'Enter') {
-                            event.preventDefault(); // Prevent default form submission
+                            event.preventDefault(); 
                             this.startTestFromInput(device.id);
                         }
                     });
@@ -651,7 +643,7 @@
                 device.serial.readLoop(onData, onError);
                 
                 // 发送指令并设置超时重试
-                for (let i = 0; i < 2; i++) {
+                for (let i = 0; i < CONFIG.RETRY_COUNT + 1; i++) {
                     if (responseReceived) break;
                     const isRetry = i > 0;
                     if (isRetry) this.uiManager.log(`设备 ${device.id}: 响应超时，重试一次...`);
@@ -665,8 +657,8 @@
 
                     await new Promise(resolve => {
                         const responseTimeout = setTimeout(() => {
-                            if (!responseReceived && i === 1) { // 最后一次重试失败
-                                this.uiManager.log(`❌ 设备 ${device.id}: 第二次响应超时`);
+                            if (!responseReceived && i === CONFIG.RETRY_COUNT) { // 最后一次重试失败
+                                this.uiManager.log(`❌ 设备 ${device.id}: 响应超时`);
                                 this.finishTest(device, { sn: null, serial: false, web: false, status: false, skipReport: true }, app);
                             }
                             resolve();
@@ -718,10 +710,10 @@
                 this.uiManager.log(`🔗 设备 ${device.id}: 正在测试网络连接...`);
                 const testUrl = await this._generateTestUrl(device.record.sn);
                 let webResult = false;
-
+                await new Promise(resolve => setTimeout(resolve, CONFIG.TIMEOUTS.TEST_URL_WAIT));
                 if (testUrl) {
                     this.uiManager.log(`🌐 设备 ${device.id}: 测试网址: ${testUrl}`);
-                    for (let attempt = 1; attempt <= 2; attempt++) {
+                    for (let attempt = 0; attempt < CONFIG.RETRY_COUNT + 1; attempt++) {
                         try {
                             if (attempt === 2) this.uiManager.log(`🔄 设备 ${device.id}: 网络访问失败，正在重试...`);
                             const proxiedUrl = `https://cors.9185918.xyz/?url=${encodeURIComponent(testUrl)}`;
@@ -733,8 +725,8 @@
                             }
                             throw new Error(`HTTP状态 ${response.status}`);
                         } catch (e) {
-                            this.uiManager.log(`❌ 设备 ${device.id}: 网络访问失败: ${e.message}${attempt === 1 ? ' (准备重试)' : ''}`);
-                            if (attempt === 1) await new Promise(resolve => setTimeout(resolve, 500));
+                            this.uiManager.log(`❌ 设备 ${device.id}: 网络访问失败: ${e.message}${attempt >= 1 ? ' (准备重试)' : ''}`);
+                            if (attempt >= 1) await new Promise(resolve => setTimeout(resolve, 1000));
                         }
                     }
                 } else {
@@ -761,7 +753,19 @@
 
                 const isSuccess = device.record.status === true;
                 this.uiManager.addOrUpdateTestResult(device.record);
-                this.uiManager.showTestResult(device.id, isSuccess ? 'pass' : 'fail', result.errorReason);
+
+                // 判断是否三个参数都没有获取到
+                const noDeviceDetected = !device.record.sn && !device.record.imei && !device.record.iccid;
+                let displayState;
+                if (isSuccess) {
+                    displayState = 'pass';
+                } else if (noDeviceDetected) {
+                    displayState = 'no-device';
+                } else {
+                    displayState = 'fail';
+                }
+
+                this.uiManager.showTestResult(device.id, displayState, result.errorReason);
                 this.uiManager.updateButtons(app.devices);
                 this.uiManager.log(`📊 设备 ${device.id}: 测试完成 - ${isSuccess ? '通过' : '失败'}`);
 
