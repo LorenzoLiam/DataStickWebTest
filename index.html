@@ -179,6 +179,10 @@ class SerialManager {
         if (!this.port) return false;
         try {
             await this.port.open({ baudRate });
+            if (baudRate >= 1000000) { 
+                console.log(`${this.type} waiting for high-speed initialization...`);
+                await new Promise(resolve => setTimeout(resolve, 500));
+            }
             this.writer = this.port.writable?.getWriter();
             this.connected = true;
             return true;
