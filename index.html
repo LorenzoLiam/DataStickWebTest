@@ -391,6 +391,16 @@ const app = {
             UIManager.log('❌ URL加密模块初始化失败!');
             return;
         }
+
+        try {
+            for (let i = 0; i < 3; i++) {
+                await navigator.serial.getPorts();
+                if (i < 2) await new Promise(resolve => setTimeout(resolve, 200));
+            }
+        } catch (e) {
+            console.warn('Failed to enumerate serial ports:', e);
+        }
+
         this.setupEventListeners();
         await this.loadSavedPorts();
         UIManager.updateButtons(this);
