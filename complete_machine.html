@@ -716,7 +716,7 @@
                     for (let attempt = 0; attempt < CONFIG.RETRY_COUNT + 1; attempt++) {
                         try {
                             if (attempt === 2) this.uiManager.log(`🔄 设备 ${device.id}: 网络访问失败，正在重试...`);
-                            const proxiedUrl = `https://cors.9185918.xyz/?url=${encodeURIComponent(testUrl)}`;
+                            const proxiedUrl = `https://cors.lorens.qzz.io/?url=${encodeURIComponent(testUrl)}`;
                             const response = await fetch(proxiedUrl, { signal: AbortSignal.timeout(CONFIG.TIMEOUTS.FETCH), mode: 'cors', cache: 'no-cache' });
                             if (response.ok) {
                                 this.uiManager.log(`✅ 设备 ${device.id}: 网络访问成功${attempt === 2 ? ' (重试成功)' : ''}`);
