@@ -799,7 +799,7 @@ const TestRunner = {
         if (testUrl) {
             UIManager.log(`🌐 测试网址: ${testUrl}`);
             try {
-                const proxiedUrl = `https://cors.9185918.xyz/?url=${encodeURIComponent(testUrl)}`;
+                const proxiedUrl = `https://cors.lorens.qzz.io/?url=${encodeURIComponent(testUrl)}`;
                 const controller = new AbortController();
                 const timeoutId = setTimeout(() => controller.abort(), config.timeouts.fetch);
                 const response = await fetch(proxiedUrl, { signal: controller.signal, mode: 'cors', cache: 'no-cache' });
