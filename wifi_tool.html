@@ -1,0 +1,923 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <title>DGS-100 单板测试 (WiFi版)</title>
+    <style>
+        body { font-family: system-ui, -apple-system, Roboto, sans-serif; padding: 5px 20px; background: #f4f7f6; color: #333; line-height: 1.6; }
+        .btn { margin: 5px; padding: 8px 15px; border: 1px solid #ccc; border-radius: 4px; cursor: pointer; background: #fff; transition: background-color 0.2s, box-shadow 0.2s; }
+        .btn:hover:not(:disabled) { background: #e9e9e9; box-shadow: 0 1px 2px rgba(0,0,0,0.1); }
+        .btn:disabled { opacity: 0.6; cursor: not-allowed; background: #f0f0f0; }
+        .panel { border: 1px solid #ddd; border-radius: 8px; padding: 15px; margin: 10px 0; background: #fff; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
+        .panel-green { border-color: #28a745; background: #f0fff0; }
+        .panel-blue { border-color: #007bff; background: #f0f8ff; }
+        .status-reporting { color: #ffc107; }
+        .status-report-success { color: #28a745; }
+        .status-report-failed { color: #dc3545; }
+        .flex { display: flex; gap: 15px; flex-wrap: wrap; }
+        .flex > div { flex: 1; min-width: 280px; }
+        .status-item { display: flex; justify-content: space-between; align-items: center; margin: 8px 0; padding-bottom: 5px; border-bottom: 1px solid #eee; }
+        .status-item span:first-child { color: #555; }
+        .status-value { font-weight: 600; }
+        .status-ready, .status-on { color: #28a745; }
+        .status-wait { color: #ffc107; }
+        .status-off { color: #6c757d; }
+        table { border-collapse: collapse; width: 100%; margin: 15px 0; background: #fff; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
+        th, td { border: 1px solid #ddd; padding: 8px; text-align: center; }
+        th { background: #f8f9fa; color: #495057; font-weight: 600; }
+        .pass { background: #d1f2d1; color: #28a745; }
+        .fail { background: #f8d7da; color: #dc3545; }
+        .testing { background: #fff3cd; color: #856404; }
+        #logBox { margin: 10px 0; padding: 10px; border: 1px solid #ddd; height: 150px; overflow-y: auto; background: #f9f9f9; color: #333; font-family: monospace; white-space: pre-wrap; word-break: break-all; border-radius: 4px; }
+        #testResultDisplay { margin: 15px 0; padding: 20px; border-radius: 8px; text-align: center; font-size: 30px; font-weight: bold; box-shadow: 0 3px 6px rgba(0,0,0,0.1); display: none;}
+        #testResultDisplay.pass { background: linear-gradient(135deg, #28a745, #20c997); color: white; border: 2px solid #1e7e34; } 
+        #testResultDisplay.fail { background: linear-gradient(135deg, #dc3545, #ff6b6b); color: white; border: 2px solid #bd2130; }
+        #testResultDisplay.waiting { background: linear-gradient(135deg, #007bff, #3da9fc); color: white; border: 2px solid #0056b3; display: block; }
+        input[type="text"] { width: 180px; padding: 6px; margin-left: 8px; border: 1px solid #ddd; border-radius: 3px; }
+        #scanInput {flex-grow: 1; max-width: 340px; padding: 15px; font-size: 1.9em; border: 2px solid #ccc; border-radius: 4px; transition: border-color 0.2s, box-shadow 0.2s;}
+        #scanInput:focus { border-color: #007bff; box-shadow: 0 0 8px rgba(0, 123, 255, 0.3); outline: none; }
+        #snLabel { font-size: 3em; font-weight: 800; }
+    </style>
+</head>
+<body>
+<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px;">
+    <h1 style="margin: 5px 0;">单板测试 (WiFi版)</h1>
+    <div style="display: flex; align-items: center; gap: 10px;">
+        <button class="btn" id="switchInterfaceBtn" style="background: #28a745; color: #fff; font-weight: 600; margin-left: 15px;">切换到整机测试</button>
+    </div>
+</div>
+
+<div class="panel">
+    <div class="flex">
+        <div class="panel panel-green">
+            <h2>配置测试架（SERIAL-D）</h2>
+            <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+                <button class="btn" id="selectStatusBtn">选择串口</button>
+                <button class="btn" id="toggleStatusBtn">连接</button>
+                <button class="btn" id="calBtn">采样校准</button>
+                <div id="statusMsg"></div>
+            </div>
+        </div>
+        <div class="panel panel-blue">
+            <h2>配置数据棒（SERIAL-A）</h2>
+            <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+                <button class="btn" id="selectTestBtn">选择串口</button>
+                <button class="btn" id="toggleTestBtn">连接</button>
+                
+                <div id="testMsg"></div>
+            </div>
+        </div>
+        <div class="panel panel-green">
+            <h2></h2>
+            <div style="display: flex; flex-direction: column; gap: 10px;">
+                <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+                    <label for="scanInput" id="snLabel">SN:</label>
+                    <input type="text" id="scanInput" placeholder="请使用扫码枪扫描...">
+                    <div id="snMsg"></div>
+                </div>
+                <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
+                    <select id="wifiList" style="padding: 6px; width: 160px; border: 1px solid #ddd; border-radius: 3px; height: 32px;">
+                        <option value="">请扫描WiFi...</option>
+                    </select>
+                    <input type="text" id="wifiPass" placeholder="WiFi密码" style="width: 120px; padding: 6px; border: 1px solid #ddd; border-radius: 3px;">
+                    <button class="btn" id="scanWifiBtn">扫描WiFi</button>
+                    <button class="btn" id="connectWifiBtn">连接WiFi</button>
+                    <div id="wifiMsg"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div id="testResultDisplay">等待测试...</div>
+
+<div class="panel">
+    <table>
+        <thead>
+            <tr><th>时间</th><th>SN</th><th>WIFI</th><th>串口通信</th><th>工作电压</th><th>工作电流</th><th>DCDC</th><th>网络供电</th><th>MCU供电</th><th>电源灯</th><th>串口灯</th><th>网络灯</th><th>网页访问</th><th>测试结果</th><th>上报状态</th></tr>
+        </thead>
+        <tbody id="resultBody"></tbody>
+    </table>
+</div>
+
+<div id="logBox">测试日志...</div>
+
+<script>
+const config = {
+    aes: { keyString: "me%ov2Ied|eicegh", ivString: "me%ov2Ied|eicegh" },
+    urls: { test: "http://gw.3wlink.cn:22011/?dgwkey=", report: "https://daantest.free.beeceptor.com" },
+    baudRates: { status: 115200, test: 10000000 },
+    timeouts: { dsn: 3000, rst: 15000, led: 2000, fetch: 5000, report: 10000 },
+    sampling: { count: 4, interval: 500 },
+    autoReport: true,
+    maxRetries: 3
+};
+
+const ui = {
+    selectStatusBtn: document.getElementById('selectStatusBtn'),
+    toggleStatusBtn: document.getElementById('toggleStatusBtn'),
+    calBtn: document.getElementById('calBtn'),
+    statusMsg: document.getElementById('statusMsg'),
+    selectTestBtn: document.getElementById('selectTestBtn'),
+    toggleTestBtn: document.getElementById('toggleTestBtn'),
+    scanInput: document.getElementById('scanInput'),
+    testMsg: document.getElementById('testMsg'),
+    snMsg: document.getElementById('snMsg'),
+    resultBody: document.getElementById('resultBody'),
+    logBox: document.getElementById('logBox'),
+    testResultDisplay: document.getElementById('testResultDisplay'),
+    wifiList: document.getElementById('wifiList'),
+    wifiPass: document.getElementById('wifiPass'),
+    scanWifiBtn: document.getElementById('scanWifiBtn'),
+    connectWifiBtn: document.getElementById('connectWifiBtn'),
+    wifiMsg: document.getElementById('wifiMsg')
+};
+
+const DgwCrypto = {
+    _key: null, _iv: null,
+    async init() {
+        if (this._key) return;
+        try {
+            const keyBytes = new TextEncoder().encode(config.aes.keyString);
+            this._iv = new TextEncoder().encode(config.aes.ivString);
+            this._key = await crypto.subtle.importKey('raw', keyBytes, { name: 'AES-CBC' }, false, ['encrypt']);
+        } catch (error) {
+            console.error(":", error);
+            throw error;
+        }
+    },
+    async encrypt(plainText) {
+        if (!this._key) { await this.init(); }
+        try {
+            const textBytes = new TextEncoder().encode(plainText);
+            const blockSize = 16;
+            let paddedData;
+            if (textBytes.length % blockSize === 0) {
+                paddedData = new Uint8Array(textBytes);
+            } else {
+                const paddingNeeded = blockSize - (textBytes.length % blockSize);
+                paddedData = new Uint8Array(textBytes.length + paddingNeeded);
+                paddedData.set(textBytes);
+            }
+            const encrypted = await crypto.subtle.encrypt({ name: 'AES-CBC', iv: this._iv }, this._key, paddedData);
+            const encryptedArray = new Uint8Array(encrypted);
+            const truncated = encryptedArray.slice(0, paddedData.length);
+            const base64 = btoa(String.fromCharCode(...truncated));
+            return base64.replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
+        } catch (error) {
+            console.error('加密失败:', error);
+            return null;
+        }
+    }
+};
+
+const encoder = new TextEncoder();
+
+class SerialManager {
+    constructor(type) {
+        this.type = type;
+        this.port = null;
+        this.reader = null;
+        this.writer = null;
+        this.connected = false;
+        this.buffer = '';
+        this.readLoopActive = false;
+    }
+    async select() {
+        try {
+            this.port = await navigator.serial.requestPort();
+            return true;
+        } catch { return false; }
+    }
+    async connect(baudRate) {
+        if (!this.port) return false;
+        try {
+            await this.port.open({ baudRate });
+            if (baudRate >= 1000000) { 
+                console.log(`${this.type} high-speed init...`);
+                await new Promise(resolve => setTimeout(resolve, 500));
+            }
+            this.writer = this.port.writable?.getWriter();
+            this.connected = true;
+            return true;
+        } catch (e) {
+            console.error(`${this.type} connect fail:`, e);
+            return false;
+        }
+    }
+    async disconnect() {
+        await this.stopReadLoop();
+        if (this.writer) { try { await this.writer.close(); } catch {} finally { this.writer = null; } }
+        if (this.port) { try { await this.port.close(); } catch {} }
+        this.connected = false;
+        this.buffer = '';
+    }
+    async readLoop(onData, onError) {
+        if (!this.port?.readable || !this.connected) return;
+        this.readLoopActive = true;
+        this.reader = this.port.readable.getReader();
+        try {
+            while (this.readLoopActive) {
+                const { value, done } = await this.reader.read();
+                if (done) break;
+                if (onData) onData(new TextDecoder().decode(value));
+            }
+        } catch (e) {
+            if (this.readLoopActive && onError) onError(e);
+        } finally {
+            if (this.reader) { this.reader.releaseLock(); this.reader = null; }
+            this.readLoopActive = false;
+        }
+    }
+    async stopReadLoop() {
+        this.readLoopActive = false;
+        try { await this.reader?.cancel(); } catch {}
+    }
+}
+
+const UIManager = {
+    init(appState) { this.state = appState; },
+    log(msg) {
+        ui.logBox.textContent += `\n[${new Date().toLocaleTimeString()}] ${msg}`;
+        ui.logBox.scrollTop = ui.logBox.scrollHeight;
+    },
+    clearLog() { ui.logBox.textContent = '测试日志...'; },
+    update(id, text, type = 'info') {
+        const el = ui[id];
+        if (el) {
+            el.textContent = text;
+            el.style.color = type === 'error' ? 'red' : type === 'success' ? 'green' : 'black';
+        }
+    },
+    updateButtons(app) {
+        const st = app.serial.status, ts = app.serial.test;
+        ui.toggleStatusBtn.textContent = st.connected ? '断开' : '连接';
+        ui.toggleStatusBtn.disabled = !st.port && !st.connected;
+        ui.toggleTestBtn.textContent = ts.connected ? '断开' : '连接';
+        ui.toggleTestBtn.disabled = !ts.port && !ts.connected;
+        ui.selectTestBtn.disabled = this.state.test.inProgress;
+        
+        if (st.connected && !this.state.device.calibrated) {
+            ui.scanInput.disabled = true;
+            ui.scanInput.placeholder = '请进行采样校准';
+        } else {
+            const ready = this.state.device.ready && ts.connected && app.state.wifiConnected;
+            ui.scanInput.disabled = this.state.test.inProgress || !ready;
+            ui.scanInput.placeholder = !ts.connected ? '请配置数据棒...' : !app.state.wifiConnected ? '请连接WiFi...' : !this.state.device.ready ? '未就绪，请配置测试架...' : '请使用扫码枪扫描...';
+        }
+        
+        ui.scanWifiBtn.disabled = !ts.connected || this.state.test.inProgress;
+        ui.connectWifiBtn.disabled = !ts.connected || this.state.test.inProgress;
+    },
+    addOrUpdateTestResult(record) {
+        if (!record.row) return;
+        const statusMap = { true: {t:'正常',c:'pass'}, false: {t:'异常',c:'fail'}, '-': {t:'-',c:''}, 'pending': {t:'待测试',c:''} };
+        const getS = v => statusMap[v] || statusMap.pending;
+        
+        const cols = [
+            { text: new Date(record.timestamp).toLocaleString() },
+            { text: record.sn, className: record.snMismatch ? 'fail' : record.snMatch ? 'pass' : '' },
+            getS(record.wifi), getS(record.serial), getS(record.vout), getS(record.iout), getS(record.ai0), getS(record.ai1),
+            getS(record.ai2), getS(record.powerLight), getS(record.rs485Light), getS(record.networkLight), getS(record.web),
+            record.status === 'pending' ? { text: '正在测试...', className: 'testing' } : getS(record.status),
+            record.reportFailed ? { text: '未上报', className: 'fail' } : record.reported ? { text: '已上报', className: 'pass' } : { text: '待上报', className: 'testing' }
+        ];
+        cols.forEach((d, i) => {
+            const c = record.row.cells[i];
+            if (c) {
+                c.textContent = d.t || d.text;
+                c.className = d.c || d.className || '';
+            }
+        });
+    },
+    showTestResult(passed) {
+        const d = ui.testResultDisplay;
+        d.style.display = 'block';
+        d.className = passed === 'waiting' ? 'waiting' : passed ? 'pass' : 'fail';
+        d.textContent = passed === 'waiting' ? '⏳ 正在测试...' : passed ? '✅ 通过' : '❌ 不通过';
+    }
+};
+
+const RecordManager = {
+    init(records, uiManager) { this.records = records; this.uiManager = uiManager; },
+    createOrUpdate(res) {
+        let r = res.isNewTest ? null : this.records.find(x => x.sn === res.sn);
+        if (res.isNewTest) {
+            ui.resultBody.innerHTML = '';
+            this.records.length = 0;
+            r = { sn: res.sn, row: ui.resultBody.insertRow(0), timestamp: Date.now(), status: 'pending', reported: false };
+            this.records.push(r);
+            for(let i=0; i<15; i++) r.row.insertCell(); 
+            ['wifi','serial','vout','iout','ai0','ai1','ai2','powerLight','rs485Light','networkLight','web'].forEach(k => r[k] = 'pending');
+        }
+        if (!r) return null;
+        Object.assign(r, res);
+        this.uiManager.addOrUpdateTestResult(r);
+        return r;
+    },
+    async report(failItem) {
+        if (!this.records.length) return this.uiManager.log('⚠️ 无结果可上报');
+        this.uiManager.log('📮 上报结果...');
+        try {
+            const list = this.records.filter(r => r.status !== 'pending' && !r.reported);
+            const data = {
+                deviceId: 'DGS-100',
+                results: list.map(r => {
+                    const p = { sn: r.sn }; 
+                    if (failItem.length) p.failureItems = failItem[0];
+                    else {
+                        p.serialTest = r.serial === true ? 'pass' : 'fail';
+                        p.webTest = r.web === true ? 'pass' : 'fail';
+                        p.overallStatus = r.status === true ? 'pass' : 'fail';
+                    }
+                    return p;
+                })
+            };
+            const resp = await fetch(config.urls.report, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'User-Agent': 'DGS-100-Tester/1.0' },
+                body: JSON.stringify(data),
+                signal: AbortSignal.timeout(config.timeouts.report)
+            });
+            if (!resp.ok) throw new Error(`${resp.status}`);
+            this.uiManager.log(`✅ 上报成功`);
+            list.forEach(r => this.createOrUpdate({ sn: r.sn, reported: true, reportFailed: false }));
+        } catch (e) {
+            this.uiManager.log(`❌ 上报失败: ${e.message}`);
+            this.records.filter(r => r.status !== 'pending' && !r.reported).forEach(r => this.createOrUpdate({ sn: r.sn, reportFailed: true }));
+        }
+    }
+};
+
+const WifiController = {
+    scannedNetworks: [],
+    async scan(app) {
+        if (!app.serial.test.connected) return UIManager.update('wifiMsg', '请连接数据棒串口', 'error');
+        if (app.state.test.inProgress) return UIManager.update('wifiMsg', '测试进行中，请稍后', 'error');
+
+        UIManager.update('wifiMsg', '正在扫描...', 'info');
+        ui.wifiList.innerHTML = '<option value="">扫描中...</option>';
+        this.scannedNetworks = [];
+        
+        await app.serial.test.stopReadLoop();
+        
+        let buffer = '';
+        const onData = (text) => {
+            buffer += text;
+            const lines = buffer.split(/[\n]+/);
+            if (lines.length > 1) {
+                buffer = lines.pop(); 
+                
+                for (const line of lines) {
+                    const trimmedLine = line.trim();
+                    if (!trimmedLine) continue;
+
+                    const ssidMatch = trimmedLine.match(/ssid\s*=\s*(.*?)\s+rssi/); 
+                    const bssidMatch = trimmedLine.match(/bssid\s*=\s*([0-9A-Fa-f]+)/); 
+                    
+                    if (ssidMatch && bssidMatch) {
+                        const ssid = ssidMatch[1].trim();
+                        const bssid = bssidMatch[1].trim();
+                        
+                        if (!this.scannedNetworks.find(n => n.ssid === ssid)) {
+                            this.scannedNetworks.push({ ssid, bssid });
+                        }
+                    }
+                    
+                    if (trimmedLine.includes('扫描结束')) {
+                         app.serial.test.stopReadLoop();
+                         this.updateSelect();
+                         UIManager.update('wifiMsg', '扫描完成', 'success');
+                         app.serial.test.buffer = ''; 
+                    }
+                }
+            }
+        };
+        
+        app.serial.test.readLoop(onData, (e) => UIManager.log(`WiFi Scan Error: ${e}`));
+        if(app.serial.test.writer) await app.serial.test.writer.write(encoder.encode('ccmd SCN\r\n'));
+    },
+    
+    updateSelect() {
+         ui.wifiList.innerHTML = '<option value="">请选择WiFi</option>';
+         this.scannedNetworks.forEach(n => {
+             const opt = document.createElement('option');
+             opt.value = n.ssid;
+             opt.textContent = n.ssid;
+             opt.dataset.bssid = n.bssid;
+             ui.wifiList.appendChild(opt);
+         });
+    },
+    
+    checkConnectionStatus(buffer, configStr) {
+        if (buffer.includes('[I] WiFi连接成功')) return 'success';
+        if (configStr) {
+            const lines = buffer.split(/\r?\n/);
+            for (const line of lines) {
+                if (line.includes(configStr) && !line.includes('ccmd')) {
+                    return 'success';
+                }
+            }
+        }
+        if (buffer.includes('[W] WiFi 密码错误')) return 'password_error';
+        if (buffer.includes('[I] wifi连接失败')) return 'failed';
+        return null;
+    },
+
+    async connect(app) {
+        if (app.state.test.inProgress) return UIManager.update('wifiMsg', '测试进行中，请稍后', 'error');
+        
+        const ssid = ui.wifiList.value;
+        const password = ui.wifiPass.value;
+        const selectedOption = ui.wifiList.options[ui.wifiList.selectedIndex];
+        const bssid = selectedOption ? selectedOption.dataset.bssid : '';
+        
+        if (!ssid || !bssid) return UIManager.update('wifiMsg', '请选择WiFi', 'error');
+        if (!app.serial.test.connected) return UIManager.update('wifiMsg', '请连接数据棒串口', 'error');
+        
+        UIManager.update('wifiMsg', '正在连接...', 'info');
+        await app.serial.test.stopReadLoop();
+        
+        const cmd = `ccmd WFI;${ssid};${password};${bssid};1\r\n`;
+        const configStr = `WFI;${ssid};${password};${bssid};1`;
+        UIManager.log(`📤 发送 WiFi连接命令: ${cmd.trim()}`); 
+        
+            let buffer = '';
+            const onData = (text) => {
+                 buffer += text;
+                 const status = this.checkConnectionStatus(buffer, configStr);
+
+                 if (status === 'success') {
+                     UIManager.update('wifiMsg', '✅ WiFi连接成功', 'success');
+                     UIManager.log('✅ WiFi连接成功');
+                     app.serial.test.stopReadLoop();
+                     app.state.wifiConnected = true;
+                     UIManager.updateButtons(app);
+                     setTimeout(() => ui.scanInput.focus(), 100);
+                 } else if (status === 'password_error') {
+                     UIManager.update('wifiMsg', '❌ WiFi 密码错误', 'error');
+                     UIManager.log('❌ WiFi密码错误');
+                     app.serial.test.stopReadLoop();
+                 } else if (status === 'failed') { 
+                     UIManager.update('wifiMsg', '❌ WiFi连接失败', 'error');
+                     UIManager.log('❌ WiFi连接失败');
+                     app.serial.test.stopReadLoop();
+                 }
+            };
+            
+            app.serial.test.readLoop(onData, (e) => UIManager.log(`WiFi Connect Error: ${e}`));
+            
+            const writer = app.serial.test.writer;
+            if (writer) {
+                const encoded = encoder.encode(cmd);
+                const chunkSize = 16;
+                for (let i = 0; i < encoded.length; i += chunkSize) {
+                    await writer.write(encoded.slice(i, i + chunkSize));
+                    await new Promise(r => setTimeout(r, 50)); 
+                }
+            }
+    }
+};
+
+const app = {
+    state: { 
+        reporting: false, 
+        test: { inProgress: false, currentSN: '', currentStep: '', stepTimeouts: {}, stepRetryCount: {}, skipWebTest: false, hasFailure: false, failureItems: [] }, 
+        device: { ready: false, status: null, colorR: 0, calibrated: false },
+        wifiConnected: false
+    },
+    serial: { status: new SerialManager('status'), test: new SerialManager('test') },
+    records: [],
+    async init() {
+        UIManager.init(this.state);
+        RecordManager.init(this.records, UIManager);
+        try { await DgwCrypto.init(); } catch { return alert('加密初始化失败'), UIManager.log('❌ Encrypt Fail'); }
+        await navigator.serial.getPorts().catch(() => {});
+        
+        this.setupEvents();
+        await this.loadPorts();
+        UIManager.updateButtons(this);
+        // ui.scanInput.focus(); Removed initial focus
+        UIManager.log('初始化完成，请连接串口。');
+    },
+    setupEvents() {
+        const bind = (el, fn) => el && el.addEventListener('click', fn);
+        bind(ui.selectStatusBtn, () => this.selectPort('status'));
+        bind(ui.toggleStatusBtn, () => this.toggleConn('status'));
+        bind(ui.selectTestBtn, () => this.selectPort('test'));
+        bind(ui.toggleTestBtn, () => this.toggleConn('test'));
+        bind(ui.calBtn, () => this.runCalibration());
+        
+        bind(ui.scanWifiBtn, () => WifiController.scan(this));
+        bind(ui.connectWifiBtn, () => WifiController.connect(this));
+
+        ui.scanInput.addEventListener('keypress', e => {
+            if (e.key !== 'Enter') return;
+            e.preventDefault();
+            const v = ui.scanInput.value.trim();
+            if (this.state.test.inProgress) return UIManager.log('⚠️ 测试进行中');
+            if (!v || v.length !== 20) return UIManager.update('snMsg', '❌ SN错误', 'error');
+            UIManager.update('testMsg', '✅ 设备已就绪', 'info');
+            TestRunner.startTest(v, this);
+        });
+        ui.scanInput.addEventListener('blur', () => !this.state.test.inProgress && !ui.scanInput.disabled && setTimeout(() => ui.scanInput.focus(), 100));
+        document.getElementById('switchInterfaceBtn').addEventListener('click', () => window.location.href = `complete_machine.html?v=${Date.now()}`);
+    },
+    async loadPorts() {
+        for (const t of ['status', 'test']) {
+            const idx = localStorage.getItem(`serialPort_${t}`);
+            if (idx !== null) {
+                const p = (await navigator.serial.getPorts())[parseInt(idx)];
+                if (p) { this.serial[t].port = p; UIManager.update(`${t}Msg`, '✅ 串口已加载'); }
+            }
+        }
+    },
+    async selectPort(type) {
+        if (await this.serial[type].select()) {
+            UIManager.update(`${type}Msg`, '✅ 串口已选择', 'success');
+            const ports = await navigator.serial.getPorts();
+            const idx = ports.indexOf(this.serial[type].port);
+            if (idx > -1) localStorage.setItem(`serialPort_${type}`, idx);
+        }
+        UIManager.updateButtons(this);
+    },
+    async toggleConn(type) {
+        const m = this.serial[type];
+        if (m.connected) {
+            await m.disconnect();
+            UIManager.update(`${type}Msg`, 'ℹ️ 已断开');
+            if (type === 'status') this.state.device.ready = false;
+            if (type === 'test') this.state.wifiConnected = false;
+        } else {
+            UIManager.update(`${type}Msg`, '⌛ 连接中...');
+            if (await m.connect(config.baudRates[type])) {
+                UIManager.update(`${type}Msg`, '✅ 已连接', 'success');
+                if (type === 'status') {
+                    this.state.device.calibrated = false;
+                    TestRunner.startStatusLoop(this);
+                }
+                if (app.state.device.ready) setTimeout(() => ui.scanInput.focus(), 100);
+            } else UIManager.update(`${type}Msg`, '❌ 连接失败', 'error');
+        }
+        UIManager.updateButtons(this);
+    },
+    async runCalibration() {
+        if (!this.serial.status.connected) return UIManager.update('statusMsg', '请先连接串口', 'error');
+        if (this.state.device.ready) return UIManager.update('statusMsg', '测试架合上不许校准', 'error');
+
+        UIManager.update('statusMsg', '正在校准请稍后...', 'info');
+        for (let i = 0; i < 3; i++) {
+            try {
+                if(this.serial.status.writer) await this.serial.status.writer.write(encoder.encode('AT+CAL\r\n'));
+                await new Promise(r => setTimeout(r, 50));
+                const s = this.state.device.status;
+                if (s) {
+                    const check = [s.ai0, s.ai1, s.ai2].map(v => parseFloat(v) || 0);
+                    if (check.every(v => v >= -10 && v <= 10)) {
+                        UIManager.update('statusMsg', '✅ 校准成功', 'success');
+                        this.state.device.calibrated = true;
+                        UIManager.updateButtons(this);
+                        if (this.state.device.ready) setTimeout(() => ui.scanInput.focus(), 100);
+                        return;
+                    }
+                }
+                if (i < 2) await new Promise(r => setTimeout(r, 1000));
+            } catch(e) { console.error(e); }
+        }
+        UIManager.update('statusMsg', '校准失败请重试', 'error');
+        this.state.device.calibrated = false;
+        UIManager.updateButtons(this);
+    }
+};
+
+const TestRunner = {
+    hwKeys: ['wifi', 'vout', 'iout', 'ai0', 'ai1', 'ai2', 'powerLight', 'rs485Light', 'networkLight'],
+    async sendCmd(app, cmd) {
+        try {
+            if(app.serial.test.writer) await app.serial.test.writer.write(encoder.encode(cmd));
+            return true;
+        } catch (e) {
+            UIManager.log(`❌ 发送失败: ${cmd.trim()} - ${e.message}`);
+            return false;
+        }
+    },
+    async startTest(sn, app) {
+        const st = app.state.test;
+        if (!app.serial.test.port || st.inProgress || !sn || !app.state.device.ready) return;
+        Object.assign(st, { inProgress: true, stepRetryCount: {}, skipWebTest: false, hasFailure: false, failureItems: [] });
+        UIManager.updateButtons(app);
+        UIManager.clearLog();
+        UIManager.log(`🚀 开始测试 SN: ${sn}`);
+        UIManager.showTestResult('waiting');
+        RecordManager.createOrUpdate({ sn, isNewTest: true });
+        
+        if (!app.serial.test.connected) return this.finishTest({ sn, serial: false }, app);
+        st.currentStep = 'WAITING_FOR_DSN';
+        await this.startReadLoop(sn, app);
+        app.serial.test.buffer = '';
+        
+        if(await this.sendCmd(app, `ccmd DSN;${sn}\r\n`)) UIManager.log(`📤 已发送 DSN`);
+        else this.finishTest({ sn, serial: false }, app);
+    },
+    async startReadLoop(sn, app) {
+        await app.serial.test.stopReadLoop();
+        app.state.test.currentSN = sn;
+        const handlers = {
+            'WAITING_FOR_DSN': b => this.handleDsnResponse(b, sn, app),
+            'WAITING_FOR_WIFI': b => this.handleWifiResponse(b, sn, app)
+        };
+        app.serial.test.readLoop(async txt => {
+            app.serial.test.buffer += txt;
+            const h = handlers[app.state.test.currentStep];
+            if (h && /[\n]/.test(app.serial.test.buffer)) await h(app.serial.test.buffer);
+        }, e => app.state.test.inProgress && this.finishTest({ sn, serial: false }, app));
+        
+        this.setStepTimeout('WAITING_FOR_DSN', () => this.retryOrFail('WAITING_FOR_DSN', sn, app, 
+            () => this.sendCmd(app, `ccmd DSN;${sn}\r\n`), '串口通信'), config.timeouts.dsn, app);
+    },
+    async retryOrFail(step, sn, app, retryFn, failItem) {
+        const st = app.state.test;
+        st.stepRetryCount[step] = (st.stepRetryCount[step] || 0) + 1;
+        if (st.stepRetryCount[step] <= config.maxRetries) {
+            UIManager.log(`🔄 ${step}重试 (${st.stepRetryCount[step]}/${config.maxRetries})...`);
+            if(await retryFn() !== false) { 
+                this.setStepTimeout(step, () => this.retryOrFail(step, sn, app, retryFn, failItem), config.timeouts[step.replace('WAITING_FOR_', '').toLowerCase()] || 3000, app);
+            }
+        } else {
+            if (typeof failItem === 'function') await failItem();
+            else {
+                st.hasFailure = true;
+                st.failureItems.push(failItem);
+                this.skipRemainingTests(sn, app);
+            }
+        }
+    },
+    checkMatch(buffer, regex, step, app) {
+        const m = buffer.match(regex);
+        if (m) this.clearStepTimeout(step, app);
+        return m ? m[1].trim() : null;
+    },
+    async handleDsnResponse(buf, sn, app) {
+        const val = this.checkMatch(buf, /DSN;(\S+?)[\n]/, 'WAITING_FOR_DSN', app);
+        if (!val) return;
+        if (val === sn) {
+            UIManager.log(`✅ DSN匹配`);
+            RecordManager.createOrUpdate({ sn, snMatch: true });
+            this.startWifiTest(sn, app);
+        } else {
+            UIManager.log(`❌ SN不匹配: ${val}`);
+            this.retryOrFail('WAITING_FOR_DSN', sn, app, () => {
+                app.serial.test.buffer = '';
+                return this.sendCmd(app, `ccmd DSN;${sn}\r\n`);
+            }, () => {
+                RecordManager.createOrUpdate({ sn, snMismatch: true });
+                app.state.test.hasFailure = true;
+                app.state.test.failureItems.push('SN不匹配');
+                this.skipRemainingTests(sn, app);
+            });
+        }
+        app.serial.test.buffer = '';
+    },
+    async sendCmdChunked(app, cmd) {
+        try {
+            const writer = app.serial.test.writer;
+            if (writer) {
+                const encoded = encoder.encode(cmd);
+                const chunkSize = 16;
+                for (let i = 0; i < encoded.length; i += chunkSize) {
+                    await writer.write(encoded.slice(i, i + chunkSize));
+                    await new Promise(r => setTimeout(r, 50)); 
+                }
+                return true;
+            }
+            return false;
+        } catch (e) {
+            UIManager.log(`❌ 发送失败: ${cmd.trim()} - ${e.message}`);
+            return false;
+        }
+    },
+    async startWifiTest(sn, app) {
+        app.state.test.currentStep = 'WAITING_FOR_WIFI';
+        const ssid = ui.wifiList.value;
+        const password = ui.wifiPass.value;
+        const selectedOption = ui.wifiList.options[ui.wifiList.selectedIndex];
+        const bssid = selectedOption ? selectedOption.dataset.bssid : '';
+        
+        const cmd = `ccmd WFI;${ssid};${password};${bssid};1\r\n`;
+        UIManager.log(`📤 发送 WiFi验证...`);
+        
+        this.setStepTimeout('WAITING_FOR_WIFI', () => this.retryOrFail('WAITING_FOR_WIFI', sn, app, 
+            () => this.sendCmdChunked(app, cmd), async () => {
+                RecordManager.createOrUpdate({ sn, wifi: false });
+                app.state.test.hasFailure = true;
+                app.state.test.failureItems.push('WiFi连接');
+                this.skipRemainingTests(sn, app);
+            }), 10000, app);
+            
+        await this.sendCmdChunked(app, cmd);
+    },
+    async handleWifiResponse(buf, sn, app) {
+        UIManager.log(`🔍 发送连接信息 ${buf.trim()}`); 
+        const ssid = ui.wifiList.value;
+        const password = ui.wifiPass.value;
+        const selectedOption = ui.wifiList.options[ui.wifiList.selectedIndex];
+        const bssid = selectedOption ? selectedOption.dataset.bssid : '';
+        const configStr = `WFI;${ssid};${password};${bssid};1`;
+        
+        const status = WifiController.checkConnectionStatus(buf, configStr);
+
+        if (status === 'success') {
+            this.clearStepTimeout('WAITING_FOR_WIFI', app);
+            UIManager.log(`✅ WiFi连接验证成功`);
+            RecordManager.createOrUpdate({ sn, wifi: true });
+            app.serial.test.buffer = ''; 
+            this.completeSerialTest(sn, app);
+        } else if (status === 'password_error') {
+            this.clearStepTimeout('WAITING_FOR_WIFI', app);
+            UIManager.log(`❌ WiFi连接验证失败: 密码错误`);
+            RecordManager.createOrUpdate({ sn, wifi: false });
+            app.state.test.hasFailure = true;
+            app.state.test.failureItems.push('WiFi连接');
+            this.skipRemainingTests(sn, app);
+        } else if (status === 'failed') { 
+            this.clearStepTimeout('WAITING_FOR_WIFI', app);
+            UIManager.log(`❌ WiFi连接验证失败: 连接失败`);
+            RecordManager.createOrUpdate({ sn, wifi: false });
+            app.state.test.hasFailure = true;
+            app.state.test.failureItems.push('WiFi连接');
+            this.skipRemainingTests(sn, app);
+        }
+    },
+    async completeSerialTest(sn, app) {
+        UIManager.log(`✅ 串口通信正常`);
+        RecordManager.createOrUpdate({ sn, serial: true });
+        app.state.test.skipWebTest = false; 
+        await this.startComponentAndLedTests(sn, app);
+    },
+    async startComponentAndLedTests(sn, app) {
+        if (app.state.test.hasFailure) return this.skipRemainingTests(sn, app);
+        app.state.test.currentStep = 'COMPONENT_TESTS';
+        const compTests = [
+            { k: 'vout', n: '工作电压', l: 4.8, h: 5.1, u: 'V' },
+            { k: 'iout', n: '工作电流', l: 50, h: 200, u: 'mA' },
+            { k: 'ai0', n: 'DCDC供电', l: 3100, h: 3500, u: 'mV' },
+            { k: 'ai1', n: '网络供电', l: 3100, h: 3500, u: 'mV' },
+            { k: 'ai2', n: 'MCU供电', l: 3100, h: 3500, u: 'mV' }
+        ];
+        for (const t of compTests) {
+            const v = await this.getAvg(() => parseFloat(app.state.device.status?.[t.k]) || 0);
+            const p = v >= t.l && v < t.h;
+            UIManager.log(`📊 ${t.n}: ${v.toFixed(3)}${t.u} [${p?'正常':'异常'}]`);
+            RecordManager.createOrUpdate({ sn, [t.k]: p });
+            if (!p) {
+                app.state.test.hasFailure = true;
+                app.state.test.failureItems.push(t.n);
+                return this.skipRemainingTests(sn, app);
+            }
+        }
+        await this.startLedTests(sn, app);
+    },
+    async startLedTests(sn, app) {
+        if (app.state.test.hasFailure) return this.skipRemainingTests(sn, app);
+        
+        UIManager.log('🔄 开启TCS...');
+        while (true) {
+            if (app.serial.status.writer) await app.serial.status.writer.write(encoder.encode('AT+TCS=ON\r\n'));
+            await new Promise(r => setTimeout(r, 200));
+            if (app.state.device.status?.tcs === 'ON') break;
+        }
+        UIManager.log('✅ TCS已开启');
+
+        await this.sendCmd(app, 'ccmd LED;2;0\r\n');
+        app.state.test.currentStep = 'LED_TESTS';
+        const ledTests = [
+            { c: 'ccmd LED;6;0\r\n', k: 'powerLight', n: '电源指示灯', th: 26, d: 1 },
+            { c: 'ccmd LED;3;1\r\n', k: 'rs485Light', n: '485指示灯', th: 26, d: 2 },
+            { c: 'ccmd LED;4;1\r\n', k: 'networkLight', n: '网络指示灯', th: 26, d: 3 }
+        ];
+        const getR = () => this.getAvg(() => parseFloat(app.state.device.status?.color_r) || app.state.device.colorR || 0);
+        
+        for (const t of ledTests) {
+            let p = false, r = 0, retries = 0;
+            do {
+                await this.sendCmd(app, t.c);
+                await new Promise(res => setTimeout(res, 500));
+                r = await getR();
+                p = (r / t.d) > t.th;
+                UIManager.log(`📊 ${t.n} Color_R:${r.toFixed(3)} [${p?'正常':'异常'}]${retries>0?` (重试 ${retries})`:''}`);
+                if(!p) retries++;
+            } while (!p && retries <= config.maxRetries);
+
+            RecordManager.createOrUpdate({ sn, [t.k]: p });
+            if (!p) {
+                app.state.test.hasFailure = true;
+                app.state.test.failureItems.push(t.n);
+                return this.skipRemainingTests(sn, app);
+            }
+        }
+        await this.startWebTest(sn, app);
+    },
+    async startWebTest(sn, app) {
+        const enc = await DgwCrypto.encrypt("DAAN" + sn);
+        const url = enc ? `${config.urls.test}${enc}` : null;
+        let webRes = false;
+        if (url) {
+            UIManager.log(`🌐 测试网址: ${url}`);
+            try {
+                const ctl = new AbortController();
+                const tid = setTimeout(() => ctl.abort(), config.timeouts.fetch);
+                const res = await fetch(`https://cors.lorens.qzz.io/?url=${encodeURIComponent(url)}`, { signal: ctl.signal, mode: 'cors', cache: 'no-cache' });
+                clearTimeout(tid);
+                if (res.ok) { UIManager.log('✅ 网络访问成功'); webRes = true; }
+                else { app.state.test.hasFailure = true; app.state.test.failureItems.push('网页访问'); }
+            } catch (e) {
+                UIManager.log(`❌ 网络访问失败: ${e.message}`);
+                app.state.test.hasFailure = true; app.state.test.failureItems.push('网页访问');
+            }
+        } else {
+            app.state.test.hasFailure = true; app.state.test.failureItems.push('网页访问');
+        }
+        const r = app.records.find(x => x.sn === sn);
+        await this.finishTest({ ...r, sn, web: webRes }, app);
+    },
+    async skipRemainingTests(sn, app) {
+        UIManager.log('⚠️ 异常跳过后续测试');
+        const r = app.records.find(x => x.sn === sn);
+        const skipObj = { serial: r?.serial==='pending'?'-':r?.serial, web: r?.web==='pending'?'-':r?.web };
+        this.hwKeys.forEach(k => skipObj[k] = r?.[k]==='pending' ? '-' : r?.[k]);
+        await this.finishTest({ ...r, sn, ...skipObj }, app);
+    },
+    async finishTest(res, app) {
+        if (!app.state.test.inProgress) return;
+        await app.serial.test.stopReadLoop();
+        Object.assign(app.state.test, { inProgress: false, stepTimeouts: {}, stepRetryCount: {}, skipWebTest: false, currentStep: 'DONE' });
+        Object.values(app.state.test.stepTimeouts).forEach(clearTimeout);
+
+        const hwPass = [res.serial, ...this.hwKeys.map(k => res[k])].every(x => x === true || x === '-');
+        const final = res.web === '未插卡' ? hwPass : (res.web === '-' ? false : hwPass && res.web);
+        
+        RecordManager.createOrUpdate({ ...res, status: final, isNewTest: false });
+        UIManager.log(`📊 测试完成: ${final ? '正常' : '异常'}`);
+        UIManager.showTestResult(final);
+        
+        if (config.autoReport) {
+            app.state.reporting = true;
+            UIManager.updateButtons(app);
+            await RecordManager.report(app.state.test.failureItems);
+            app.state.reporting = false;
+        }
+        Object.assign(app.state.test, { hasFailure: false, failureItems: [] });
+        UIManager.updateButtons(app);
+        ui.scanInput.value = ''; ui.scanInput.focus();
+    },
+    startStatusLoop(app) {
+        app.serial.status.readLoop(txt => {
+            app.serial.status.buffer += txt;
+            if (app.serial.status.buffer.includes('Color_C=')) {
+                this.parseStatus(app.serial.status.buffer.trim(), app);
+                app.serial.status.buffer = '';
+            }
+        }, e => { UIManager.log(`❌ 状态串口错误: ${e.message}`); app.toggleConn('status'); });
+    },
+    parseStatus(data, app) {
+        const p = {};
+        data.split(/\r?\n/).forEach(l => {
+            const m = l.match(/^(\w+)[=:]\s*(.+)/);
+            if (m) p[m[1].toLowerCase()] = m[2].trim();
+        });
+        if (p.color_r) app.state.device.colorR = parseFloat(p.color_r) || 0;
+        const prev = app.state.device.status?.state;
+        app.state.device.status = p;
+        if (prev !== p.state) {
+            app.state.device.ready = p.state === 'Ready';
+            UIManager.update('statusMsg', app.state.device.ready ? '✅ 设备已就绪' : 'ℹ️ 设备未就绪', app.state.device.ready ? 'success' : 'info');
+            if (app.state.device.ready && app.state.device.calibrated) { setTimeout(() => ui.scanInput.focus(), 100); UIManager.log('✅ 设备已就绪'); }
+        }
+        UIManager.updateButtons(app);
+    },
+    async getAvg(fn) {
+        const s = [];
+        for (let i = 0; i < config.sampling.count; i++) {
+            s.push(await fn());
+            if (i < config.sampling.count - 1) await new Promise(r => setTimeout(r, config.sampling.interval));
+        }
+        s.sort((a, b) => a - b);
+        const valid = s.length <= 2 ? s : s.slice(1, -1);
+        const avg = valid.reduce((a, b) => a + b, 0) / valid.length;
+        UIManager.log(`📊 采样: [${s.join(', ')}] -> 平均: ${avg.toFixed(3)}`);
+        return avg;
+    },
+    setStepTimeout(step, cb, time, app) {
+        this.clearStepTimeout(step, app);
+        app.state.test.stepTimeouts[step] = setTimeout(cb, time);
+    },
+    clearStepTimeout(step, app) {
+        if (app.state.test.stepTimeouts[step]) clearTimeout(app.state.test.stepTimeouts[step]);
+    }
+};
+
+if ('serial' in navigator) app.init();
+else { alert('错误：不支持 Web Serial API'); document.body.innerHTML = '<h1>浏览器不兼容</h1>'; }
+</script>
+</body>
+</html>
