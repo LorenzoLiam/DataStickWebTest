@@ -618,7 +618,15 @@ const TestRunner = {
     },
     async startLedTests(sn, app) {
         if (app.state.test.hasFailure) return this.skipRemainingTests(sn, app);
-        await this.sendCmd(app, 'AT+TCS=ON\r\n');
+
+        UIManager.log('🔄 开启TCS...');
+        while (true) {
+            await this.sendCmd(app, 'AT+TCS=ON\r\n');
+            await new Promise(r => setTimeout(r, 200));
+            if (app.state.device.status?.tcs === 'ON') break;
+        }
+        UIManager.log('✅ TCS已开启');
+
         app.state.test.currentStep = 'LED_TESTS';
         const ledTests = [
             { c: 'ccmd LED;6;0\r\n', k: 'powerLight', n: '电源指示灯', th: 26, d: 1 },
