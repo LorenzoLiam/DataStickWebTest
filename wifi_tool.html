@@ -58,7 +58,7 @@
                 <div id="statusMsg"></div>
             </div>
         </div>
-        <div class="panel panel-blue">
+        <div class="panel panel-blue" style="flex: 0.85; min-width: 250px;">
             <h2>配置数据棒（SERIAL-A）</h2>
             <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
                 <button class="btn" id="selectTestBtn">选择串口</button>
@@ -67,8 +67,7 @@
                 <div id="testMsg"></div>
             </div>
         </div>
-        <div class="panel panel-green">
-            <h2></h2>
+        <div class="panel panel-green" style="flex: 1.15;">
             <div style="display: flex; flex-direction: column; gap: 10px;">
                 <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
                     <label for="scanInput" id="snLabel">SN:</label>
@@ -76,11 +75,11 @@
                     <div id="snMsg"></div>
                 </div>
                 <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
+                    <button class="btn" id="scanWifiBtn">扫描WiFi</button>
                     <select id="wifiList" style="padding: 6px; width: 160px; border: 1px solid #ddd; border-radius: 3px; height: 32px;">
                         <option value="">请扫描WiFi...</option>
                     </select>
                     <input type="text" id="wifiPass" placeholder="WiFi密码" style="width: 120px; padding: 6px; border: 1px solid #ddd; border-radius: 3px;">
-                    <button class="btn" id="scanWifiBtn">扫描WiFi</button>
                     <button class="btn" id="connectWifiBtn">连接WiFi</button>
                     <div id="wifiMsg"></div>
                 </div>
@@ -130,6 +129,7 @@ const ui = {
     wifiPass: document.getElementById('wifiPass'),
     scanWifiBtn: document.getElementById('scanWifiBtn'),
     connectWifiBtn: document.getElementById('connectWifiBtn'),
+    snMsg: document.getElementById('snMsg'),
     wifiMsg: document.getElementById('wifiMsg')
 };
 
@@ -180,57 +180,57 @@ class SerialManager {
         this.reader = null;
         this.writer = null;
         this.connected = false;
+        this.reading = false;
         this.buffer = '';
-        this.readLoopActive = false;
     }
     async select() {
-        try {
-            this.port = await navigator.serial.requestPort();
-            return true;
-        } catch { return false; }
+        try { this.port = await navigator.serial.requestPort(); return true; } catch { return false; }
     }
     async connect(baudRate) {
         if (!this.port) return false;
         try {
             await this.port.open({ baudRate });
-            if (baudRate >= 1000000) { 
-                console.log(`${this.type} high-speed init...`);
-                await new Promise(resolve => setTimeout(resolve, 500));
-            }
+            if (baudRate >= 1000000) await new Promise(r => setTimeout(r, 500));
             this.writer = this.port.writable?.getWriter();
             this.connected = true;
             return true;
-        } catch (e) {
-            console.error(`${this.type} connect fail:`, e);
-            return false;
-        }
+        } catch (e) { console.error(`${this.type} connect fail:`, e); return false; }
     }
     async disconnect() {
-        await this.stopReadLoop();
-        if (this.writer) { try { await this.writer.close(); } catch {} finally { this.writer = null; } }
+        await this.stopRead();
+        if (this.writer) { try { await this.writer.close(); } catch {} this.writer = null; }
         if (this.port) { try { await this.port.close(); } catch {} }
         this.connected = false;
         this.buffer = '';
     }
+    async write(data, chunkDelay = 0) {
+        if (!this.writer) return false;
+        try {
+            const enc = typeof data === 'string' ? new TextEncoder().encode(data) : data;
+            if (chunkDelay > 0) {
+                for (let i = 0; i < enc.length; i += 16) {
+                    await this.writer.write(enc.slice(i, i + 16));
+                    await new Promise(r => setTimeout(r, chunkDelay));
+                }
+            } else await this.writer.write(enc);
+            return true;
+        } catch (e) { console.error('Write error:', e); return false; }
+    }
     async readLoop(onData, onError) {
         if (!this.port?.readable || !this.connected) return;
-        this.readLoopActive = true;
+        this.reading = true;
         this.reader = this.port.readable.getReader();
         try {
-            while (this.readLoopActive) {
+            while (this.reading) {
                 const { value, done } = await this.reader.read();
                 if (done) break;
                 if (onData) onData(new TextDecoder().decode(value));
             }
-        } catch (e) {
-            if (this.readLoopActive && onError) onError(e);
-        } finally {
-            if (this.reader) { this.reader.releaseLock(); this.reader = null; }
-            this.readLoopActive = false;
-        }
+        } catch (e) { if (this.reading && onError) onError(e); }
+        finally { if (this.reader) { this.reader.releaseLock(); this.reader = null; } this.reading = false; }
     }
-    async stopReadLoop() {
-        this.readLoopActive = false;
+    async stopRead() {
+        this.reading = false;
         try { await this.reader?.cancel(); } catch {}
     }
 }
@@ -246,7 +246,7 @@ const UIManager = {
         const el = ui[id];
         if (el) {
             el.textContent = text;
-            el.style.color = type === 'error' ? 'red' : type === 'success' ? 'green' : 'black';
+            el.style.color = type === 'error' ? '#dc3545' : type === 'success' ? '#28a745' : '#333';
         }
     },
     updateButtons(app) {
@@ -266,8 +266,8 @@ const UIManager = {
             ui.scanInput.placeholder = !ts.connected ? '请配置数据棒...' : !app.state.wifiConnected ? '请连接WiFi...' : !this.state.device.ready ? '未就绪，请配置测试架...' : '请使用扫码枪扫描...';
         }
         
-        ui.scanWifiBtn.disabled = !ts.connected || this.state.test.inProgress;
-        ui.connectWifiBtn.disabled = !ts.connected || this.state.test.inProgress;
+        ui.scanWifiBtn.disabled = !ts.connected || this.state.test.inProgress || !this.state.device.ready;
+        ui.connectWifiBtn.disabled = !ts.connected || this.state.test.inProgress || !this.state.device.ready;
     },
     addOrUpdateTestResult(record) {
         if (!record.row) return;
@@ -352,130 +352,108 @@ const RecordManager = {
 const WifiController = {
     scannedNetworks: [],
     async scan(app) {
-        if (!app.serial.test.connected) return UIManager.update('wifiMsg', '请连接数据棒串口', 'error');
+        const sm = app.serial.test;
+        if (!sm.connected) return UIManager.update('wifiMsg', '请连接数据棒串口', 'error');
         if (app.state.test.inProgress) return UIManager.update('wifiMsg', '测试进行中，请稍后', 'error');
+        if (!app.state.device.ready) return UIManager.update('wifiMsg', '设备未就绪', 'error');
 
         UIManager.update('wifiMsg', '正在扫描...', 'info');
         ui.wifiList.innerHTML = '<option value="">扫描中...</option>';
         this.scannedNetworks = [];
         
-        await app.serial.test.stopReadLoop();
+        await sm.stopRead();
+        sm.buffer = ''; 
         
-        let buffer = '';
-        const onData = (text) => {
-            buffer += text;
-            const lines = buffer.split(/[\n]+/);
+        sm.readLoop(text => {
+            sm.buffer += text;
+            const lines = sm.buffer.split(/[\n]+/);
             if (lines.length > 1) {
-                buffer = lines.pop(); 
-                
+                sm.buffer = lines.pop(); 
                 for (const line of lines) {
-                    const trimmedLine = line.trim();
-                    if (!trimmedLine) continue;
-
-                    const ssidMatch = trimmedLine.match(/ssid\s*=\s*(.*?)\s+rssi/); 
-                    const bssidMatch = trimmedLine.match(/bssid\s*=\s*([0-9A-Fa-f]+)/); 
-                    
-                    if (ssidMatch && bssidMatch) {
-                        const ssid = ssidMatch[1].trim();
-                        const bssid = bssidMatch[1].trim();
-                        
-                        if (!this.scannedNetworks.find(n => n.ssid === ssid)) {
-                            this.scannedNetworks.push({ ssid, bssid });
-                        }
+                    const l = line.trim();
+                    if (!l) continue;
+                    const m = l.match(/ssid\s*=\s*(.*?)\s+rssi/); 
+                    const b = l.match(/bssid\s*=\s*([0-9A-Fa-f]+)/); 
+                    if (m && b && !this.scannedNetworks.find(n => n.ssid === m[1].trim())) {
+                        this.scannedNetworks.push({ ssid: m[1].trim(), bssid: b[1].trim() });
                     }
-                    
-                    if (trimmedLine.includes('扫描结束')) {
-                         app.serial.test.stopReadLoop();
+                    if (l.includes('扫描结束')) {
+                         sm.stopRead();
                          this.updateSelect();
                          UIManager.update('wifiMsg', '扫描完成', 'success');
-                         app.serial.test.buffer = ''; 
+                         sm.buffer = ''; 
                     }
                 }
             }
-        };
-        
-        app.serial.test.readLoop(onData, (e) => UIManager.log(`WiFi Scan Error: ${e}`));
-        if(app.serial.test.writer) await app.serial.test.writer.write(encoder.encode('ccmd SCN\r\n'));
+        }, e => UIManager.log(`WiFi Scan Error: ${e}`));
+        await sm.write('ccmd SCN\r\n');
     },
     
     updateSelect() {
-         ui.wifiList.innerHTML = '<option value="">请选择WiFi</option>';
+         ui.wifiList.innerHTML = '';
+         if (this.scannedNetworks.length === 0) {
+             ui.wifiList.innerHTML = '<option value="">未找到WiFi</option>';
+         }
          this.scannedNetworks.forEach(n => {
              const opt = document.createElement('option');
-             opt.value = n.ssid;
-             opt.textContent = n.ssid;
-             opt.dataset.bssid = n.bssid;
+             opt.value = n.ssid; opt.textContent = n.ssid; opt.dataset.bssid = n.bssid;
              ui.wifiList.appendChild(opt);
          });
     },
     
-    checkConnectionStatus(buffer, configStr) {
-        if (buffer.includes('[I] WiFi连接成功')) return 'success';
-        if (configStr) {
-            const lines = buffer.split(/\r?\n/);
+    checkStatus(buf, cfgStr) {
+        if (buf.includes('[I] WiFi连接成功')) return 'success';
+        if (buf.includes('[W] WiFi 密码错误')) return 'password_error';
+        if (buf.includes('[I] wifi连接失败')) return 'failed';
+        
+        if (cfgStr) {
+            const lines = buf.split(/\r?\n/);
             for (const line of lines) {
-                if (line.includes(configStr) && !line.includes('ccmd')) {
+                if (line.includes(cfgStr) && !line.includes('ccmd')) {
                     return 'success';
                 }
             }
         }
-        if (buffer.includes('[W] WiFi 密码错误')) return 'password_error';
-        if (buffer.includes('[I] wifi连接失败')) return 'failed';
         return null;
     },
 
     async connect(app) {
+        const sm = app.serial.test;
         if (app.state.test.inProgress) return UIManager.update('wifiMsg', '测试进行中，请稍后', 'error');
+        if (!app.state.device.ready) return UIManager.update('wifiMsg', '设备未就绪', 'error');
         
         const ssid = ui.wifiList.value;
-        const password = ui.wifiPass.value;
-        const selectedOption = ui.wifiList.options[ui.wifiList.selectedIndex];
-        const bssid = selectedOption ? selectedOption.dataset.bssid : '';
+        const pass = ui.wifiPass.value;
+        const bssid = ui.wifiList.options[ui.wifiList.selectedIndex]?.dataset.bssid;
         
         if (!ssid || !bssid) return UIManager.update('wifiMsg', '请选择WiFi', 'error');
-        if (!app.serial.test.connected) return UIManager.update('wifiMsg', '请连接数据棒串口', 'error');
+        if (!sm.connected) return UIManager.update('wifiMsg', '请连接数据棒串口', 'error');
         
         UIManager.update('wifiMsg', '正在连接...', 'info');
-        await app.serial.test.stopReadLoop();
+        await sm.stopRead();
         
-        const cmd = `ccmd WFI;${ssid};${password};${bssid};1\r\n`;
-        const configStr = `WFI;${ssid};${password};${bssid};1`;
+        const configStr = `WFI;${ssid};${pass};${bssid};1`;
+        const cmd = `ccmd ${configStr}\r\n`;
         UIManager.log(`📤 发送 WiFi连接命令: ${cmd.trim()}`); 
         
-            let buffer = '';
-            const onData = (text) => {
-                 buffer += text;
-                 const status = this.checkConnectionStatus(buffer, configStr);
-
+        sm.buffer = '';
+        sm.readLoop(text => {
+             sm.buffer += text;
+             const status = this.checkStatus(sm.buffer, configStr);
+             if (status) {
+                 const msgs = { success: '✅ WiFi已连接', password_error: '❌ WiFi密码错误', failed: '❌ WiFi连接失败' };
+                 UIManager.update('wifiMsg', msgs[status], status === 'success' ? 'success' : 'error');
+                 UIManager.log(msgs[status]);
+                 sm.stopRead();
                  if (status === 'success') {
-                     UIManager.update('wifiMsg', '✅ WiFi连接成功', 'success');
-                     UIManager.log('✅ WiFi连接成功');
-                     app.serial.test.stopReadLoop();
                      app.state.wifiConnected = true;
                      UIManager.updateButtons(app);
                      setTimeout(() => ui.scanInput.focus(), 100);
-                 } else if (status === 'password_error') {
-                     UIManager.update('wifiMsg', '❌ WiFi 密码错误', 'error');
-                     UIManager.log('❌ WiFi密码错误');
-                     app.serial.test.stopReadLoop();
-                 } else if (status === 'failed') { 
-                     UIManager.update('wifiMsg', '❌ WiFi连接失败', 'error');
-                     UIManager.log('❌ WiFi连接失败');
-                     app.serial.test.stopReadLoop();
                  }
-            };
-            
-            app.serial.test.readLoop(onData, (e) => UIManager.log(`WiFi Connect Error: ${e}`));
-            
-            const writer = app.serial.test.writer;
-            if (writer) {
-                const encoded = encoder.encode(cmd);
-                const chunkSize = 16;
-                for (let i = 0; i < encoded.length; i += chunkSize) {
-                    await writer.write(encoded.slice(i, i + chunkSize));
-                    await new Promise(r => setTimeout(r, 50)); 
-                }
-            }
+             }
+        }, e => UIManager.log(`WiFi Connect Error: ${e}`));
+        
+        await sm.write(cmd, 50);
     }
 };
 
@@ -492,12 +470,9 @@ const app = {
         UIManager.init(this.state);
         RecordManager.init(this.records, UIManager);
         try { await DgwCrypto.init(); } catch { return alert('加密初始化失败'), UIManager.log('❌ Encrypt Fail'); }
-        await navigator.serial.getPorts().catch(() => {});
-        
         this.setupEvents();
         await this.loadPorts();
         UIManager.updateButtons(this);
-        // ui.scanInput.focus(); Removed initial focus
         UIManager.log('初始化完成，请连接串口。');
     },
     setupEvents() {
@@ -507,9 +482,9 @@ const app = {
         bind(ui.selectTestBtn, () => this.selectPort('test'));
         bind(ui.toggleTestBtn, () => this.toggleConn('test'));
         bind(ui.calBtn, () => this.runCalibration());
-        
         bind(ui.scanWifiBtn, () => WifiController.scan(this));
         bind(ui.connectWifiBtn, () => WifiController.connect(this));
+        document.getElementById('switchInterfaceBtn').addEventListener('click', () => window.location.href = `complete_machine.html?v=${Date.now()}`);
 
         ui.scanInput.addEventListener('keypress', e => {
             if (e.key !== 'Enter') return;
@@ -521,14 +496,14 @@ const app = {
             TestRunner.startTest(v, this);
         });
         ui.scanInput.addEventListener('blur', () => !this.state.test.inProgress && !ui.scanInput.disabled && setTimeout(() => ui.scanInput.focus(), 100));
-        document.getElementById('switchInterfaceBtn').addEventListener('click', () => window.location.href = `complete_machine.html?v=${Date.now()}`);
     },
     async loadPorts() {
+        const ports = await navigator.serial.getPorts().catch(()=>[]);
         for (const t of ['status', 'test']) {
             const idx = localStorage.getItem(`serialPort_${t}`);
-            if (idx !== null) {
-                const p = (await navigator.serial.getPorts())[parseInt(idx)];
-                if (p) { this.serial[t].port = p; UIManager.update(`${t}Msg`, '✅ 串口已加载'); }
+            if (idx !== null && ports[idx]) { 
+                this.serial[t].port = ports[idx]; 
+                UIManager.update(`${t}Msg`, '✅ 串口已加载'); 
             }
         }
     },
@@ -536,8 +511,7 @@ const app = {
         if (await this.serial[type].select()) {
             UIManager.update(`${type}Msg`, '✅ 串口已选择', 'success');
             const ports = await navigator.serial.getPorts();
-            const idx = ports.indexOf(this.serial[type].port);
-            if (idx > -1) localStorage.setItem(`serialPort_${type}`, idx);
+            localStorage.setItem(`serialPort_${type}`, ports.indexOf(this.serial[type].port));
         }
         UIManager.updateButtons(this);
     },
@@ -556,7 +530,7 @@ const app = {
                     this.state.device.calibrated = false;
                     TestRunner.startStatusLoop(this);
                 }
-                if (app.state.device.ready) setTimeout(() => ui.scanInput.focus(), 100);
+                if (this.state.device.ready) setTimeout(() => ui.scanInput.focus(), 100);
             } else UIManager.update(`${type}Msg`, '❌ 连接失败', 'error');
         }
         UIManager.updateButtons(this);
@@ -565,21 +539,18 @@ const app = {
         if (!this.serial.status.connected) return UIManager.update('statusMsg', '请先连接串口', 'error');
         if (this.state.device.ready) return UIManager.update('statusMsg', '测试架合上不许校准', 'error');
 
-        UIManager.update('statusMsg', '正在校准请稍后...', 'info');
+        UIManager.update('statusMsg', '正在校准...', 'info');
         for (let i = 0; i < 3; i++) {
             try {
-                if(this.serial.status.writer) await this.serial.status.writer.write(encoder.encode('AT+CAL\r\n'));
+                await this.serial.status.write('AT+CAL\r\n');
                 await new Promise(r => setTimeout(r, 50));
                 const s = this.state.device.status;
-                if (s) {
-                    const check = [s.ai0, s.ai1, s.ai2].map(v => parseFloat(v) || 0);
-                    if (check.every(v => v >= -10 && v <= 10)) {
-                        UIManager.update('statusMsg', '✅ 校准成功', 'success');
-                        this.state.device.calibrated = true;
-                        UIManager.updateButtons(this);
-                        if (this.state.device.ready) setTimeout(() => ui.scanInput.focus(), 100);
-                        return;
-                    }
+                if (s && [s.ai0, s.ai1, s.ai2].every(v => Math.abs(parseFloat(v)||0) <= 10)) {
+                    UIManager.update('statusMsg', '✅ 校准成功', 'success');
+                    this.state.device.calibrated = true;
+                    UIManager.updateButtons(this);
+                    if (this.state.device.ready) setTimeout(() => ui.scanInput.focus(), 100);
+                    return;
                 }
                 if (i < 2) await new Promise(r => setTimeout(r, 1000));
             } catch(e) { console.error(e); }
@@ -592,15 +563,6 @@ const app = {
 
 const TestRunner = {
     hwKeys: ['wifi', 'vout', 'iout', 'ai0', 'ai1', 'ai2', 'powerLight', 'rs485Light', 'networkLight'],
-    async sendCmd(app, cmd) {
-        try {
-            if(app.serial.test.writer) await app.serial.test.writer.write(encoder.encode(cmd));
-            return true;
-        } catch (e) {
-            UIManager.log(`❌ 发送失败: ${cmd.trim()} - ${e.message}`);
-            return false;
-        }
-    },
     async startTest(sn, app) {
         const st = app.state.test;
         if (!app.serial.test.port || st.inProgress || !sn || !app.state.device.ready) return;
@@ -616,11 +578,11 @@ const TestRunner = {
         await this.startReadLoop(sn, app);
         app.serial.test.buffer = '';
         
-        if(await this.sendCmd(app, `ccmd DSN;${sn}\r\n`)) UIManager.log(`📤 已发送 DSN`);
+        if(await app.serial.test.write(`ccmd DSN;${sn}\r\n`)) UIManager.log(`📤 已发送 DSN`);
         else this.finishTest({ sn, serial: false }, app);
     },
     async startReadLoop(sn, app) {
-        await app.serial.test.stopReadLoop();
+        await app.serial.test.stopRead();
         app.state.test.currentSN = sn;
         const handlers = {
             'WAITING_FOR_DSN': b => this.handleDsnResponse(b, sn, app),
@@ -630,10 +592,10 @@ const TestRunner = {
             app.serial.test.buffer += txt;
             const h = handlers[app.state.test.currentStep];
             if (h && /[\n]/.test(app.serial.test.buffer)) await h(app.serial.test.buffer);
-        }, e => app.state.test.inProgress && this.finishTest({ sn, serial: false }, app));
+        }, () => app.state.test.inProgress && this.finishTest({ sn, serial: false }, app));
         
         this.setStepTimeout('WAITING_FOR_DSN', () => this.retryOrFail('WAITING_FOR_DSN', sn, app, 
-            () => this.sendCmd(app, `ccmd DSN;${sn}\r\n`), '串口通信'), config.timeouts.dsn, app);
+            () => app.serial.test.write(`ccmd DSN;${sn}\r\n`), '串口通信'), config.timeouts.dsn, app);
     },
     async retryOrFail(step, sn, app, retryFn, failItem) {
         const st = app.state.test;
@@ -668,7 +630,7 @@ const TestRunner = {
             UIManager.log(`❌ SN不匹配: ${val}`);
             this.retryOrFail('WAITING_FOR_DSN', sn, app, () => {
                 app.serial.test.buffer = '';
-                return this.sendCmd(app, `ccmd DSN;${sn}\r\n`);
+                return app.serial.test.write(`ccmd DSN;${sn}\r\n`);
             }, () => {
                 RecordManager.createOrUpdate({ sn, snMismatch: true });
                 app.state.test.hasFailure = true;
@@ -678,53 +640,33 @@ const TestRunner = {
         }
         app.serial.test.buffer = '';
     },
-    async sendCmdChunked(app, cmd) {
-        try {
-            const writer = app.serial.test.writer;
-            if (writer) {
-                const encoded = encoder.encode(cmd);
-                const chunkSize = 16;
-                for (let i = 0; i < encoded.length; i += chunkSize) {
-                    await writer.write(encoded.slice(i, i + chunkSize));
-                    await new Promise(r => setTimeout(r, 50)); 
-                }
-                return true;
-            }
-            return false;
-        } catch (e) {
-            UIManager.log(`❌ 发送失败: ${cmd.trim()} - ${e.message}`);
-            return false;
-        }
-    },
     async startWifiTest(sn, app) {
         app.state.test.currentStep = 'WAITING_FOR_WIFI';
         const ssid = ui.wifiList.value;
-        const password = ui.wifiPass.value;
-        const selectedOption = ui.wifiList.options[ui.wifiList.selectedIndex];
-        const bssid = selectedOption ? selectedOption.dataset.bssid : '';
+        const pass = ui.wifiPass.value;
+        const bssid = ui.wifiList.options[ui.wifiList.selectedIndex]?.dataset.bssid || '';
         
-        const cmd = `ccmd WFI;${ssid};${password};${bssid};1\r\n`;
+        const cmd = `ccmd WFI;${ssid};${pass};${bssid};1\r\n`;
         UIManager.log(`📤 发送 WiFi验证...`);
         
         this.setStepTimeout('WAITING_FOR_WIFI', () => this.retryOrFail('WAITING_FOR_WIFI', sn, app, 
-            () => this.sendCmdChunked(app, cmd), async () => {
+            () => app.serial.test.write(cmd, 50), async () => {
                 RecordManager.createOrUpdate({ sn, wifi: false });
                 app.state.test.hasFailure = true;
                 app.state.test.failureItems.push('WiFi连接');
                 this.skipRemainingTests(sn, app);
             }), 10000, app);
             
-        await this.sendCmdChunked(app, cmd);
+        await app.serial.test.write(cmd, 50);
     },
     async handleWifiResponse(buf, sn, app) {
         UIManager.log(`🔍 发送连接信息 ${buf.trim()}`); 
         const ssid = ui.wifiList.value;
-        const password = ui.wifiPass.value;
-        const selectedOption = ui.wifiList.options[ui.wifiList.selectedIndex];
-        const bssid = selectedOption ? selectedOption.dataset.bssid : '';
-        const configStr = `WFI;${ssid};${password};${bssid};1`;
+        const pass = ui.wifiPass.value;
+        const bssid = ui.wifiList.options[ui.wifiList.selectedIndex]?.dataset.bssid || '';
+        const configStr = `WFI;${ssid};${pass};${bssid};1`;
         
-        const status = WifiController.checkConnectionStatus(buf, configStr);
+        const status = WifiController.checkStatus(buf, configStr);
 
         if (status === 'success') {
             this.clearStepTimeout('WAITING_FOR_WIFI', app);
@@ -732,16 +674,10 @@ const TestRunner = {
             RecordManager.createOrUpdate({ sn, wifi: true });
             app.serial.test.buffer = ''; 
             this.completeSerialTest(sn, app);
-        } else if (status === 'password_error') {
+        } else if (status === 'password_error' || status === 'failed') {
             this.clearStepTimeout('WAITING_FOR_WIFI', app);
-            UIManager.log(`❌ WiFi连接验证失败: 密码错误`);
-            RecordManager.createOrUpdate({ sn, wifi: false });
-            app.state.test.hasFailure = true;
-            app.state.test.failureItems.push('WiFi连接');
-            this.skipRemainingTests(sn, app);
-        } else if (status === 'failed') { 
-            this.clearStepTimeout('WAITING_FOR_WIFI', app);
-            UIManager.log(`❌ WiFi连接验证失败: 连接失败`);
+            const msg = status === 'password_error' ? '密码错误' : '连接失败';
+            UIManager.log(`❌ WiFi连接验证失败: ${msg}`);
             RecordManager.createOrUpdate({ sn, wifi: false });
             app.state.test.hasFailure = true;
             app.state.test.failureItems.push('WiFi连接');
@@ -782,25 +718,25 @@ const TestRunner = {
         
         UIManager.log('🔄 开启TCS...');
         while (true) {
-            if (app.serial.status.writer) await app.serial.status.writer.write(encoder.encode('AT+TCS=ON\r\n'));
+            await app.serial.status.write('AT+TCS=ON\r\n');
             await new Promise(r => setTimeout(r, 200));
             if (app.state.device.status?.tcs === 'ON') break;
         }
         UIManager.log('✅ TCS已开启');
 
-        await this.sendCmd(app, 'ccmd LED;2;0\r\n');
+        await app.serial.test.write('ccmd LED;2;0\r\n');
         app.state.test.currentStep = 'LED_TESTS';
         const ledTests = [
-            { c: 'ccmd LED;6;0\r\n', k: 'powerLight', n: '电源指示灯', th: 26, d: 1 },
-            { c: 'ccmd LED;3;1\r\n', k: 'rs485Light', n: '485指示灯', th: 26, d: 2 },
-            { c: 'ccmd LED;4;1\r\n', k: 'networkLight', n: '网络指示灯', th: 26, d: 3 }
+            { c: 'ccmd LED;6;0\r\n', k: 'powerLight', n: '电源指示灯', th: 20, d: 1 },
+            { c: 'ccmd LED;3;1\r\n', k: 'rs485Light', n: '485指示灯', th: 20, d: 2 },
+            { c: 'ccmd LED;4;1\r\n', k: 'networkLight', n: '网络指示灯', th: 20, d: 3 }
         ];
         const getR = () => this.getAvg(() => parseFloat(app.state.device.status?.color_r) || app.state.device.colorR || 0);
         
         for (const t of ledTests) {
             let p = false, r = 0, retries = 0;
             do {
-                await this.sendCmd(app, t.c);
+                await app.serial.test.write(t.c);
                 await new Promise(res => setTimeout(res, 500));
                 r = await getR();
                 p = (r / t.d) > t.th;
@@ -815,7 +751,21 @@ const TestRunner = {
                 return this.skipRemainingTests(sn, app);
             }
         }
-        await this.startWebTest(sn, app);
+        await this.sendRstAndWait(sn, app);
+    },
+    async sendRstAndWait(sn, app) {
+        if(await app.serial.status.write('AT+RST\r\n')) {
+            UIManager.log('📤 发送 AT+RST...');
+            app.serial.status.buffer = '';
+            app.state.test.currentStep = 'WAITING_FOR_RST';
+            await new Promise(res => setTimeout(res, config.timeouts.rst));
+            UIManager.log('✅ 重置完成');
+            await this.startWebTest(sn, app);
+        } else {
+            app.state.test.hasFailure = true;
+            app.state.test.failureItems.push('设备重置');
+            await this.skipRemainingTests(sn, app);
+        }
     },
     async startWebTest(sn, app) {
         const enc = await DgwCrypto.encrypt("DAAN" + sn);
@@ -849,7 +799,7 @@ const TestRunner = {
     },
     async finishTest(res, app) {
         if (!app.state.test.inProgress) return;
-        await app.serial.test.stopReadLoop();
+        await app.serial.test.stopRead();
         Object.assign(app.state.test, { inProgress: false, stepTimeouts: {}, stepRetryCount: {}, skipWebTest: false, currentStep: 'DONE' });
         Object.values(app.state.test.stepTimeouts).forEach(clearTimeout);
 
