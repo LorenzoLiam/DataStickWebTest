@@ -172,19 +172,29 @@ const DgwCrypto = {
 };
 
 const encoder = new TextEncoder();
+const decoder = new TextDecoder();
+
+const STATUS_MAP = { true: {t:'正常',c:'pass'}, false: {t:'异常',c:'fail'}, '-': {t:'-',c:''}, 'pending': {t:'待测试',c:''} };
+const COMP_TESTS = [
+    { k: 'vout', n: '工作电压', l: 4.8, h: 5.1, u: 'V' },
+    { k: 'iout', n: '工作电流', l: 50, h: 200, u: 'mA' },
+    { k: 'ai0', n: 'DCDC供电', l: 3100, h: 3500, u: 'mV' },
+    { k: 'ai1', n: '网络供电', l: 3100, h: 3500, u: 'mV' },
+    { k: 'ai2', n: 'MCU供电', l: 3100, h: 3500, u: 'mV' }
+];
+const LED_TESTS = [
+    { c: 'ccmd LED;6;0\r\n', k: 'powerLight', n: '电源指示灯', th: 20, d: 1 },
+    { c: 'ccmd LED;3;1\r\n', k: 'rs485Light', n: '485指示灯', th: 20, d: 2 },
+    { c: 'ccmd LED;4;1\r\n', k: 'networkLight', n: '网络指示灯', th: 20, d: 3 }
+];
 
 class SerialManager {
     constructor(type) {
-        this.type = type;
-        this.port = null;
-        this.reader = null;
-        this.writer = null;
-        this.connected = false;
-        this.reading = false;
-        this.buffer = '';
+        this.type = type; this.port = null; this.reader = null; this.writer = null;
+        this.connected = false; this.reading = false; this.buffer = '';
     }
     async select() {
-        try { this.port = await navigator.serial.requestPort(); return true; } catch { return false; }
+        return navigator.serial.requestPort().then(p => { this.port = p; return true; }).catch(() => false);
     }
     async connect(baudRate) {
         if (!this.port) return false;
@@ -200,13 +210,12 @@ class SerialManager {
         await this.stopRead();
         if (this.writer) { try { await this.writer.close(); } catch {} this.writer = null; }
         if (this.port) { try { await this.port.close(); } catch {} }
-        this.connected = false;
-        this.buffer = '';
+        this.connected = false; this.buffer = '';
     }
     async write(data, chunkDelay = 0) {
         if (!this.writer) return false;
         try {
-            const enc = typeof data === 'string' ? new TextEncoder().encode(data) : data;
+            const enc = typeof data === 'string' ? encoder.encode(data) : data;
             if (chunkDelay > 0) {
                 for (let i = 0; i < enc.length; i += 16) {
                     await this.writer.write(enc.slice(i, i + 16));
@@ -224,7 +233,7 @@ class SerialManager {
             while (this.reading) {
                 const { value, done } = await this.reader.read();
                 if (done) break;
-                if (onData) onData(new TextDecoder().decode(value));
+                if (onData) onData(decoder.decode(value));
             }
         } catch (e) { if (this.reading && onError) onError(e); }
         finally { if (this.reader) { this.reader.releaseLock(); this.reader = null; } this.reading = false; }
@@ -251,29 +260,26 @@ const UIManager = {
     },
     updateButtons(app) {
         const st = app.serial.status, ts = app.serial.test;
+        const d = this.state.device;
         ui.toggleStatusBtn.textContent = st.connected ? '断开' : '连接';
         ui.toggleStatusBtn.disabled = !st.port && !st.connected;
         ui.toggleTestBtn.textContent = ts.connected ? '断开' : '连接';
         ui.toggleTestBtn.disabled = !ts.port && !ts.connected;
         ui.selectTestBtn.disabled = this.state.test.inProgress;
         
-        if (st.connected && !this.state.device.calibrated) {
-            ui.scanInput.disabled = true;
-            ui.scanInput.placeholder = '请进行采样校准';
+        if (st.connected && !d.calibrated) {
+            ui.scanInput.disabled = true; ui.scanInput.placeholder = '请进行采样校准';
         } else {
-            const ready = this.state.device.ready && ts.connected && app.state.wifiConnected;
+            const ready = d.ready && ts.connected && app.state.wifiConnected;
             ui.scanInput.disabled = this.state.test.inProgress || !ready;
-            ui.scanInput.placeholder = !ts.connected ? '请配置数据棒...' : !app.state.wifiConnected ? '请连接WiFi...' : !this.state.device.ready ? '未就绪，请配置测试架...' : '请使用扫码枪扫描...';
+            ui.scanInput.placeholder = !ts.connected ? '请配置数据棒...' : !app.state.wifiConnected ? '请连接WiFi...' : !d.ready ? '未就绪，请配置测试架...' : '请使用扫码枪扫描...';
         }
-        
-        ui.scanWifiBtn.disabled = !ts.connected || this.state.test.inProgress || !this.state.device.ready;
-        ui.connectWifiBtn.disabled = !ts.connected || this.state.test.inProgress || !this.state.device.ready;
+        ui.scanWifiBtn.disabled = !ts.connected || this.state.test.inProgress || !d.ready;
+        ui.connectWifiBtn.disabled = !ts.connected || this.state.test.inProgress || !d.ready;
     },
     addOrUpdateTestResult(record) {
         if (!record.row) return;
-        const statusMap = { true: {t:'正常',c:'pass'}, false: {t:'异常',c:'fail'}, '-': {t:'-',c:''}, 'pending': {t:'待测试',c:''} };
-        const getS = v => statusMap[v] || statusMap.pending;
-        
+        const getS = v => STATUS_MAP[v] || STATUS_MAP.pending;
         const cols = [
             { text: new Date(record.timestamp).toLocaleString() },
             { text: record.sn, className: record.snMismatch ? 'fail' : record.snMatch ? 'pass' : '' },
@@ -284,10 +290,7 @@ const UIManager = {
         ];
         cols.forEach((d, i) => {
             const c = record.row.cells[i];
-            if (c) {
-                c.textContent = d.t || d.text;
-                c.className = d.c || d.className || '';
-            }
+            if (c) { c.textContent = d.t || d.text; c.className = d.c || d.className || ''; }
         });
     },
     showTestResult(passed) {
@@ -363,17 +366,17 @@ const WifiController = {
         
         await sm.stopRead();
         sm.buffer = ''; 
-        
+        const ssidRx = /ssid\s*=\s*(.*?)\s+rssi/;
+        const bssidRx = /bssid\s*=\s*([0-9A-Fa-f]+)/;
+
         sm.readLoop(text => {
             sm.buffer += text;
             const lines = sm.buffer.split(/[\n]+/);
             if (lines.length > 1) {
                 sm.buffer = lines.pop(); 
-                for (const line of lines) {
-                    const l = line.trim();
-                    if (!l) continue;
-                    const m = l.match(/ssid\s*=\s*(.*?)\s+rssi/); 
-                    const b = l.match(/bssid\s*=\s*([0-9A-Fa-f]+)/); 
+                for (const l of lines.map(x=>x.trim()).filter(x=>x)) {
+                    const m = l.match(ssidRx); 
+                    const b = l.match(bssidRx); 
                     if (m && b && !this.scannedNetworks.find(n => n.ssid === m[1].trim())) {
                         this.scannedNetworks.push({ ssid: m[1].trim(), bssid: b[1].trim() });
                     }
@@ -405,15 +408,7 @@ const WifiController = {
         if (buf.includes('[I] WiFi连接成功')) return 'success';
         if (buf.includes('[W] WiFi 密码错误')) return 'password_error';
         if (buf.includes('[I] wifi连接失败')) return 'failed';
-        
-        if (cfgStr) {
-            const lines = buf.split(/\r?\n/);
-            for (const line of lines) {
-                if (line.includes(cfgStr) && !line.includes('ccmd')) {
-                    return 'success';
-                }
-            }
-        }
+        if (cfgStr && buf.split(/\r?\n/).some(line => line.includes(cfgStr) && !line.includes('ccmd'))) return 'success';
         return null;
     },
 
@@ -499,13 +494,13 @@ const app = {
     },
     async loadPorts() {
         const ports = await navigator.serial.getPorts().catch(()=>[]);
-        for (const t of ['status', 'test']) {
+        ['status', 'test'].forEach(t => {
             const idx = localStorage.getItem(`serialPort_${t}`);
             if (idx !== null && ports[idx]) { 
                 this.serial[t].port = ports[idx]; 
                 UIManager.update(`${t}Msg`, '✅ 串口已加载'); 
             }
-        }
+        });
     },
     async selectPort(type) {
         if (await this.serial[type].select()) {
@@ -693,14 +688,7 @@ const TestRunner = {
     async startComponentAndLedTests(sn, app) {
         if (app.state.test.hasFailure) return this.skipRemainingTests(sn, app);
         app.state.test.currentStep = 'COMPONENT_TESTS';
-        const compTests = [
-            { k: 'vout', n: '工作电压', l: 4.8, h: 5.1, u: 'V' },
-            { k: 'iout', n: '工作电流', l: 50, h: 200, u: 'mA' },
-            { k: 'ai0', n: 'DCDC供电', l: 3100, h: 3500, u: 'mV' },
-            { k: 'ai1', n: '网络供电', l: 3100, h: 3500, u: 'mV' },
-            { k: 'ai2', n: 'MCU供电', l: 3100, h: 3500, u: 'mV' }
-        ];
-        for (const t of compTests) {
+        for (const t of COMP_TESTS) {
             const v = await this.getAvg(() => parseFloat(app.state.device.status?.[t.k]) || 0);
             const p = v >= t.l && v < t.h;
             UIManager.log(`📊 ${t.n}: ${v.toFixed(3)}${t.u} [${p?'正常':'异常'}]`);
@@ -726,14 +714,9 @@ const TestRunner = {
 
         await app.serial.test.write('ccmd LED;2;0\r\n');
         app.state.test.currentStep = 'LED_TESTS';
-        const ledTests = [
-            { c: 'ccmd LED;6;0\r\n', k: 'powerLight', n: '电源指示灯', th: 20, d: 1 },
-            { c: 'ccmd LED;3;1\r\n', k: 'rs485Light', n: '485指示灯', th: 20, d: 2 },
-            { c: 'ccmd LED;4;1\r\n', k: 'networkLight', n: '网络指示灯', th: 20, d: 3 }
-        ];
         const getR = () => this.getAvg(() => parseFloat(app.state.device.status?.color_r) || app.state.device.colorR || 0);
         
-        for (const t of ledTests) {
+        for (const t of LED_TESTS) {
             let p = false, r = 0, retries = 0;
             do {
                 await app.serial.test.write(t.c);
