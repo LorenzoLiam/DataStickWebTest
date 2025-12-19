@@ -56,7 +56,7 @@
             <h2 style="margin: 5px 0;">设备A（SERIAL-A）</h2>
             <div style="display: flex; align-items: center; margin-bottom: 5px;">
                 <label for="snInput4" style="margin-right: 5px; font-weight: bold; font-size: 30px;">SN:</label>
-                <input type="text" id="snInput1" placeholder="请连接设备..." style="flex-grow: 1; padding: 10px; font-size: 24px;" disabled>
+                <input type="text" id="snInput1" placeholder="请连接设备..." style="flex-grow: 1; padding: 10px; font-size: 24px; min-width: 0; box-sizing: border-box;" disabled>
             </div>
             <div style="display: flex; align-items: center; gap: 10px;">
                 <button class="btn" id="selectDevice1Btn">选择串口</button>
@@ -69,7 +69,7 @@
             <h2 style="margin: 5px 0;">设备B（SERIAL-B）</h2>
             <div style="display: flex; align-items: center; margin-bottom: 5px;">
                 <label for="snInput4" style="margin-right: 5px; font-weight: bold; font-size: 30px;">SN:</label>
-                <input type="text" id="snInput2" placeholder="请连接设备..." style="flex-grow: 1; padding: 10px; font-size: 24px;" disabled>
+                <input type="text" id="snInput2" placeholder="请连接设备..." style="flex-grow: 1; padding: 10px; font-size: 24px; min-width: 0; box-sizing: border-box;" disabled>
             </div>
             <div style="display: flex; align-items: center; gap: 10px;">
                 <button class="btn" id="selectDevice2Btn">选择串口</button>
@@ -82,7 +82,7 @@
             <h2 style="margin: 5px 0;">设备C（SERIAL-C）</h2>
             <div style="display: flex; align-items: center; margin-bottom: 5px;">
                 <label for="snInput4" style="margin-right: 5px; font-weight: bold; font-size: 30px;">SN:</label>
-                <input type="text" id="snInput3" placeholder="请连接设备..." style="flex-grow: 1; padding: 10px; font-size: 24px;" disabled>
+                <input type="text" id="snInput3" placeholder="请连接设备..." style="flex-grow: 1; padding: 10px; font-size: 24px; min-width: 0; box-sizing: border-box;" disabled>
             </div>
             <div style="display: flex; align-items: center; gap: 10px;">
                 <button class="btn" id="selectDevice3Btn">选择串口</button>
@@ -95,7 +95,7 @@
             <h2 style="margin: 5px 0;">设备D（SERIAL-D）</h2>
             <div style="display: flex; align-items: center; margin-bottom: 5px;">
                 <label for="snInput4" style="margin-right: 5px; font-weight: bold; font-size: 30px;">SN:</label>
-                <input type="text" id="snInput4" placeholder="请连接设备..." style="flex-grow: 1; padding: 10px; font-size: 24px;" disabled>
+                <input type="text" id="snInput4" placeholder="请连接设备..." style="flex-grow: 1; padding: 10px; font-size: 24px; min-width: 0; box-sizing: border-box;" disabled>
             </div>
             <div style="display: flex; align-items: center; gap: 10px;">
                 <button class="btn" id="selectDevice4Btn">选择串口</button>
@@ -111,16 +111,16 @@
  <div class="panel">
     <div style="display: flex; flex-direction: column; align-items: center; gap: 15px; margin: 15px 0;">
         
-        <div style="display: flex; justify-content: center; width: 80%;">
-            <div id="testResultDisplay-1" class="test-result-display default" style="width: 300px; margin-left: 160px;">端口A未连接</div>
-            <div id="testResultDisplay-3" class="test-result-display default" style="width: 300px; margin-left: 120px;">端口C未连接</div>
+        <div style="display: flex; justify-content: center; width: 100%;">
+            <div id="testResultDisplay-1" class="test-result-display default" style="width: 250px; margin-left: 150px;">端口A未连接</div>
+            <div id="testResultDisplay-3" class="test-result-display default" style="width: 250px; margin-left: 160px;">端口C未连接</div>
         </div>
 
         <img id="deviceImage4" src="image.png" alt="设备图片" style="width: 50%; border-radius: 8px; box-shadow: var(--shadow-sm);"> 
 
-        <div style="display: flex; justify-content: center; width: 80%;">
-            <div id="testResultDisplay-2" class="test-result-display default" style="width: 300px; margin-left: 160px;">端口B未连接</div>
-            <div id="testResultDisplay-4" class="test-result-display default" style="width: 300px; margin-left: 120px;">端口D未连接</div>
+        <div style="display: flex; justify-content: center; width: 100%;">
+            <div id="testResultDisplay-2" class="test-result-display default" style="width: 250px; margin-left: 150px;">端口B未连接</div>
+            <div id="testResultDisplay-4" class="test-result-display default" style="width: 250px; margin-left: 160px;">端口D未连接</div>
         </div>
 
     </div>
