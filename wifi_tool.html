@@ -43,6 +43,7 @@
 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px;">
     <h1 style="margin: 5px 0;">单板测试 (WiFi版)</h1>
     <div style="display: flex; align-items: center; gap: 10px;">
+        <button class="btn" id="switchVerisonBtn" style="background: #007bff; color: #fff; font-weight: 600; margin-left: 15px;">切换到4G版</button>
         <button class="btn" id="switchInterfaceBtn" style="background: #28a745; color: #fff; font-weight: 600; margin-left: 15px;">切换到整机测试</button>
     </div>
 </div>
@@ -479,7 +480,8 @@ const app = {
         bind(ui.calBtn, () => this.runCalibration());
         bind(ui.scanWifiBtn, () => WifiController.scan(this));
         bind(ui.connectWifiBtn, () => WifiController.connect(this));
-        document.getElementById('switchInterfaceBtn').addEventListener('click', () => window.location.href = `complete_machine.html?v=${Date.now()}`);
+        document.getElementById('switchInterfaceBtn').addEventListener('click', () => window.location.href = `complete_machine_wifi.html?v=${Date.now()}`);
+        document.getElementById('switchVerisonBtn').addEventListener('click', () => window.location.href = `index.html?v=${Date.now()}`);
 
         ui.scanInput.addEventListener('keypress', e => {
             if (e.key !== 'Enter') return;

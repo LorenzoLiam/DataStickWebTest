@@ -2,7 +2,7 @@
 <html lang="zh">
 <head>
     <meta charset="UTF-8">
-    <title>DGS-100 整机测试</title>
+    <title>DGS-100 整机测试 (4G版)</title>
     <style>
         :root {
             --color-primary: #007bff;
@@ -45,8 +45,11 @@
 <body>
 <!-- 主控界面 -->
 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px;">
-    <h1 style="margin: 5px 0;">整机测试</h1>
-    <button id="switchInterfaceBtn" class="btn" style="background: var(--color-success); color: white; font-weight: bold;">切换到单板测试</button>
+    <h1 style="margin: 5px 0;">整机测试 (4G版)</h1>
+    <div style="display: flex; align-items: center; gap: 10px;">
+        <button class="btn" id="switchVerisonBtn" style="background: #28a745; color: #fff; font-weight: 600; margin-left: 15px;">切换到WIFI版</button>
+        <button class="btn" id="switchInterfaceBtn" style="background: #007bff; color: #fff; font-weight: 600; margin-left: 15px;">切换到单板测试</button>
+    </div>
 </div>
 
 <!-- 设备连接面板 -->
@@ -156,7 +159,6 @@
         const UI = {
             logBox: document.getElementById('logBox'),
             resultBody: document.getElementById('wholeMachineResultBody'),
-            switchInterfaceBtn: document.getElementById('switchInterfaceBtn'),
             testResultDisplays: Array.from({ length: CONFIG.DEVICE_COUNT }, (_, i) => document.getElementById(`testResultDisplay-${i + 1}`)),
             devicePanels: Array.from({ length: CONFIG.DEVICE_COUNT }, (_, i) => ({
                 selectBtn: document.getElementById(`selectDevice${i + 1}Btn`),
@@ -479,7 +481,8 @@
                     });
                 });
                 //UI.switchInterfaceBtn.addEventListener('click', () => window.location.href = 'index.html');
-                UI.switchInterfaceBtn.addEventListener('click', () => { const targetPage = 'index.html'; window.location.href = `${targetPage}?v=${Date.now()}`;});
+                document.getElementById('switchInterfaceBtn').addEventListener('click', () => window.location.href = `index.html?v=${Date.now()}`);
+                document.getElementById('switchVerisonBtn').addEventListener('click', () => window.location.href = `complete_machine_wifi.html?v=${Date.now()}`);
             }
 
             async startTestFromInput(id) {

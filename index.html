@@ -2,7 +2,7 @@
 <html lang="zh">
 <head>
     <meta charset="UTF-8">
-    <title>DGS-100 单板测试</title>
+    <title>DGS-100 单板测试 (4G版)</title>
     <style>
         body { font-family: system-ui, -apple-system, Roboto, sans-serif; padding: 5px 20px; background: #f4f7f6; color: #333; line-height: 1.6; }
         .btn { margin: 5px; padding: 8px 15px; border: 1px solid #ccc; border-radius: 4px; cursor: pointer; background: #fff; transition: background-color 0.2s, box-shadow 0.2s; }
@@ -41,9 +41,10 @@
 </head>
 <body>
 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px;">
-    <h1 style="margin: 5px 0;">单板测试</h1>
+    <h1 style="margin: 5px 0;">单板测试 (4G版)</h1>
     <div style="display: flex; align-items: center; gap: 10px;">
-        <button class="btn" id="switchInterfaceBtn" style="background: #28a745; color: #fff; font-weight: 600; margin-left: 15px;">切换到整机测试</button>
+        <button class="btn" id="switchVerisonBtn" style="background: #28a745; color: #fff; font-weight: 600; margin-left: 15px;">切换到WIFI版</button>
+        <button class="btn" id="switchInterfaceBtn" style="background: #007bff; color: #fff; font-weight: 600; margin-left: 15px;">切换到整机测试</button>
     </div>
 </div>
 
@@ -375,6 +376,7 @@ const app = {
         });
         ui.scanInput.addEventListener('blur', () => !this.state.test.inProgress && setTimeout(() => ui.scanInput.focus(), 100));
         document.getElementById('switchInterfaceBtn').addEventListener('click', () => window.location.href = `complete_machine.html?v=${Date.now()}`);
+        document.getElementById('switchVerisonBtn').addEventListener('click', () => window.location.href = `wifi_tool.html?v=${Date.now()}`);
     },
     async loadPorts() {
         for (const t of ['status', 'test']) {
