@@ -424,7 +424,7 @@
                 if (!display) return;
 
                 const states = {
-                    waiting: { text: `⏳ 设备${String.fromCharCode(64 + deviceId)}正在测试...`, className: 'waiting' },
+                    waiting: { text: `⏳ 设备${String.fromCharCode(64 + deviceId)}测试中...`, className: 'waiting' },
                     pass: { text: `✅ 设备${String.fromCharCode(64 + deviceId)}-通过`, className: 'pass' },
                     fail: { text: `❌ 设备${String.fromCharCode(64 + deviceId)}-不通过`, className: 'fail' },
                     'no-device': { text: `❌ 设备${String.fromCharCode(64 + deviceId)}-未插入`, className: 'fail' },
