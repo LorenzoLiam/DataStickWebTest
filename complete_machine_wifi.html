@@ -1,0 +1,1098 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <title>DGS-100 整机测试 (WiFi版)</title>
+    <style>
+        :root {
+            --color-primary: #007bff;
+            --color-success: #28a745;
+            --color-danger: #dc3545;
+            --color-warning: #ffc107;
+            --color-light: #f8f9fa;
+            --color-dark: #343a40;
+            --border-radius: 8px;
+            --shadow-sm: 0 2px 4px rgba(0,0,0,0.05);
+        }
+        body { font-family: system-ui, -apple-system, Roboto, sans-serif; padding: 5px 20px; background: #f4f7f6; color: #333; line-height: 1.6; }
+        .btn { margin: 5px; padding: 8px 15px; border: 1px solid #ccc; border-radius: 4px; cursor: pointer; background: #fff; transition: background-color 0.2s, box-shadow 0.2s; }
+        .btn:hover:not(:disabled) { background: #e9e9e9; box-shadow: 0 1px 2px rgba(0,0,0,0.1); }
+        .btn:disabled { opacity: 0.6; cursor: not-allowed; background: #f0f0f0; }
+        .panel { border: 1px solid #ddd; border-radius: var(--border-radius); padding: 15px; margin: 10px 0; background: #fff; box-shadow: var(--shadow-sm); }
+        .panel-blue { border-color: var(--color-primary); background: #f0f8ff; }
+        .panel-green { border-color: var(--color-success); background: #f0fff0; }
+        .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 15px; }
+        table { border-collapse: collapse; width: 100%; margin: 20px 0; background: #fff; border-radius: var(--border-radius); overflow: hidden; box-shadow: var(--shadow-sm); }
+        th, td { border: 1px solid #ddd; padding: 10px; text-align: center; }
+        th { background: var(--color-light); color: #495057; font-weight: 600; }
+        .pass { background: #d1f2d1; color: var(--color-success); }
+        .fail { background: #f8d7da; color: var(--color-danger); }
+        .testing { background: #fff3cd; color: #856404; }
+        #logBox { margin: 10px 0; padding: 10px; border: 1px solid #ddd; height: 160px; overflow-y: auto; background: #f9f9f9; color: #333; font-family: monospace; white-space: pre-wrap; word-break: break-all; border-radius: 4px; }
+        .table-container { max-height: 520px; overflow-y: auto; }
+        .test-result-display {
+            margin: 0; padding: 10px; border-radius: var(--border-radius); text-align: center; font-size: 30px; font-weight: bold; box-shadow: 0 3px 6px rgba(0,0,0,0.1); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+            transition: background 0.3s ease, color 0.3s ease;
+        }
+        .test-result-display.pass { background: linear-gradient(135deg, #28a745, #20c997); color: white; border: 2px solid #1e7e34; }
+        .test-result-display.fail { background: linear-gradient(135deg, #dc3545, #ff6b6b); color: white; border: 2px solid #bd2130; }
+        .test-result-display.waiting { background: linear-gradient(135deg, #007bff, #3da9fc); color: white; border: 2px solid #0056b3; }
+        .test-result-display.default { background: #f8f9fa; color: #6c757d; border: 2px solid #dee2e6; }
+    </style>
+</head>
+<body>
+<!-- 主控界面 -->
+<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px;">
+    <h1 style="margin: 5px 0;">整机测试 (WiFi版)</h1>
+    <div style="display: flex; align-items: center; gap: 5px;">
+        <button class="btn" id="scanWifiBtn">扫描WiFi</button>
+        <select id="wifiList" style="padding: 6px; width: 200px; border: 1px solid #ddd; border-radius: 4px; height: 36px;">
+            <option value="">请先扫描...</option>
+        </select>
+        <input type="text" id="wifiPass" placeholder="WiFi密码" style="padding: 8px; border: 1px solid #ddd; border-radius: 4px; width: 120px;">
+        <button class="btn" id="connectWifiBtn">连接WiFi</button>
+        <div style="width: 1px; height: 24px; background: #ccc; margin: 0 10px;"></div>
+        <button class="btn" id="switchVerisonBtn" style="background: #007bff; color: #fff; font-weight: 600; margin-left: 15px;">切换到4G版</button>
+        <button class="btn" id="switchInterfaceBtn" style="background: #28a745; color: #fff; font-weight: 600; margin-left: 15px;">切换到单板测试</button>
+    </div>
+</div>
+
+<!-- 设备连接面板 -->
+<div class="panel">
+    <div class="grid">
+        <div class="panel panel-green">
+            <h2 style="margin: 5px 0;">设备A（SERIAL-A）</h2>
+            <div style="display: flex; align-items: center; margin-bottom: 5px;">
+                <label for="snInput1" style="margin-right: 5px; font-weight: bold; font-size: 30px;">SN:</label>
+                <input type="text" id="snInput1" placeholder="请连接设备..." style="flex-grow: 1; padding: 10px; font-size: 24px; min-width: 0; box-sizing: border-box;" disabled>
+            </div>
+            <div style="display: flex; align-items: center; gap: 10px;">
+                <button class="btn" id="selectDevice1Btn">选择串口</button>
+                <button class="btn" id="connectDevice1Btn">连接</button>
+                <div id="device1Msg"></div>
+            </div>
+        </div>
+        <div class="panel panel-blue">
+            <h2 style="margin: 5px 0;">设备B（SERIAL-B）</h2>
+            <div style="display: flex; align-items: center; margin-bottom: 5px;">
+                <label for="snInput2" style="margin-right: 5px; font-weight: bold; font-size: 30px;">SN:</label>
+                <input type="text" id="snInput2" placeholder="请连接设备..." style="flex-grow: 1; padding: 10px; font-size: 24px; min-width: 0; box-sizing: border-box;" disabled>
+            </div>
+            <div style="display: flex; align-items: center; gap: 10px;">
+                <button class="btn" id="selectDevice2Btn">选择串口</button>
+                <button class="btn" id="connectDevice2Btn">连接</button>
+                <div id="device2Msg"></div>
+            </div>
+        </div>
+        <div class="panel panel-green">
+            <h2 style="margin: 5px 0;">设备C（SERIAL-C）</h2>
+            <div style="display: flex; align-items: center; margin-bottom: 5px;">
+                <label for="snInput3" style="margin-right: 5px; font-weight: bold; font-size: 30px;">SN:</label>
+                <input type="text" id="snInput3" placeholder="请连接设备..." style="flex-grow: 1; padding: 10px; font-size: 24px; min-width: 0; box-sizing: border-box;" disabled>
+            </div>
+            <div style="display: flex; align-items: center; gap: 10px;">
+                <button class="btn" id="selectDevice3Btn">选择串口</button>
+                <button class="btn" id="connectDevice3Btn">连接</button>
+                <div id="device3Msg"></div>
+            </div>
+        </div>
+        <div class="panel panel-blue">
+            <h2 style="margin: 5px 0;">设备D（SERIAL-D）</h2>
+            <div style="display: flex; align-items: center; margin-bottom: 5px;">
+                <label for="snInput4" style="margin-right: 5px; font-weight: bold; font-size: 30px;">SN:</label>
+                <input type="text" id="snInput4" placeholder="请连接设备..." style="flex-grow: 1; padding: 10px; font-size: 24px; min-width: 0; box-sizing: border-box;" disabled>
+            </div>
+            <div style="display: flex; align-items: center; gap: 10px;">
+                <button class="btn" id="selectDevice4Btn">选择串口</button>
+                <button class="btn" id="connectDevice4Btn">连接</button>
+                <div id="device4Msg"></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 状态显示 -->
+ <div class="panel">
+    <div style="display: flex; flex-direction: column; align-items: center; gap: 15px; margin: 15px 0;">
+        
+        <div style="display: flex; justify-content: center; width: 100%;">
+            <div id="testResultDisplay-1" class="test-result-display default" style="width: 250px; margin-left: 150px;">端口A未连接</div>
+            <div id="testResultDisplay-3" class="test-result-display default" style="width: 250px; margin-left: 160px;">端口C未连接</div>
+        </div>
+
+        <img id="deviceImage4" src="image.png" alt="设备图片" style="width: 50%; border-radius: 8px; box-shadow: var(--shadow-sm);"> 
+
+        <div style="display: flex; justify-content: center; width: 100%;">
+            <div id="testResultDisplay-2" class="test-result-display default" style="width: 250px; margin-left: 150px;">端口B未连接</div>
+            <div id="testResultDisplay-4" class="test-result-display default" style="width: 250px; margin-left: 160px;">端口D未连接</div>
+        </div>
+
+    </div>
+</div>
+<!-- 测试结果表格 -->
+<div class="panel">
+    <div class="table-container">
+        <table>
+            <thead><tr><th>设备号</th><th>时间</th><th>SN</th><th>WIFI</th><th>串口通信</th><th>网页访问</th><th>测试结果</th><th>上报状态</th></tr></thead>
+            <tbody id="wholeMachineResultBody"></tbody>
+        </table>
+    </div>
+</div>
+
+<!-- 日志 -->
+<div id="logBox">测试日志...</div>
+
+<script>
+
+    (function() {
+        'use strict';
+        const CONFIG = {
+            AES: { KEY_STRING: "me%ov2Ied|eicegh", IV_STRING: "me%ov2Ied|eicegh" },
+            URLS: { TEST: "http://gw.3wlink.cn:22011/?dgwkey=", REPORT: "https://daantest.free.beeceptor.com" },
+            BAUD_RATE: 115200,
+            TIMEOUTS: { 
+                COMMAND: 2000, 
+                RESPONSE: 2000, 
+                WIFI_CONNECT: 5000,
+                WIFI_CHECK: 3000,
+                FETCH: 5000, 
+                REPORT: 10000 , 
+                TEST_URL_WAIT: 5000
+            },
+            AUTO_REPORT: true,
+            DEVICE_COUNT: 4,
+            RETRY_COUNT: 2,
+            LOG_LIMIT: 100,
+        };
+
+        const UI = {
+            logBox: document.getElementById('logBox'),
+            resultBody: document.getElementById('wholeMachineResultBody'),
+            testResultDisplays: Array.from({ length: CONFIG.DEVICE_COUNT }, (_, i) => document.getElementById(`testResultDisplay-${i + 1}`)),
+            devicePanels: Array.from({ length: CONFIG.DEVICE_COUNT }, (_, i) => ({
+                selectBtn: document.getElementById(`selectDevice${i + 1}Btn`),
+                connectBtn: document.getElementById(`connectDevice${i + 1}Btn`),
+                msg: document.getElementById(`device${i + 1}Msg`),
+                snInput: document.getElementById(`snInput${i + 1}`)
+            })),
+            wifi: {
+                list: document.getElementById('wifiList'),
+                pass: document.getElementById('wifiPass'),
+                scanBtn: document.getElementById('scanWifiBtn'),
+                connectBtn: document.getElementById('connectWifiBtn'),
+                msg: document.getElementById('wifiMsg')
+            }
+        };
+
+        /**
+         * AES 加密工具 
+         */
+        const DgwCrypto = {
+            _key: null, _iv: null,
+            async init() {
+                if (this._key) return;
+                try {
+                    const keyBytes = new TextEncoder().encode(CONFIG.AES.KEY_STRING);
+                    this._iv = new TextEncoder().encode(CONFIG.AES.IV_STRING);
+                    this._key = await crypto.subtle.importKey('raw', keyBytes, { name: 'AES-CBC' }, false, ['encrypt']);
+                } catch (error) {
+                    console.error("AES_CBC密钥导入失败:", error);
+                    throw error;
+                }
+            },
+            async encrypt(plainText) {
+                if (!this._key) await this.init();
+                try {
+                    const textBytes = new TextEncoder().encode(plainText);
+                    const blockSize = 16;
+                    const paddingNeeded = blockSize - (textBytes.length % blockSize);
+                    const paddedData = new Uint8Array(textBytes.length + (paddingNeeded === blockSize ? 0 : paddingNeeded));
+                    paddedData.set(textBytes);
+                    const encrypted = await crypto.subtle.encrypt({ name: 'AES-CBC', iv: this._iv }, this._key, paddedData);
+                    const truncated = new Uint8Array(encrypted).slice(0, paddedData.length);
+                    return btoa(String.fromCharCode(...truncated)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
+                } catch (error) {
+                    console.error('加密失败:', error);
+                    return null;
+                }
+            }
+        };
+
+        /**
+         * 管理串口的连接、读写和断开。
+         */
+        class SerialManager {
+            constructor(id) {
+                this.id = id;
+                this.port = null;
+                this.reader = null;
+                this.writer = null;
+                this.connected = false;
+                this.readLoopActive = false;
+            }
+            async select() {
+                try {
+                    this.port = await navigator.serial.requestPort();
+                    return true;
+                } catch {
+                    return false;
+                }
+            }
+            async connect(baudRate) {
+                if (!this.port) return false;
+                try {
+                    await this.port.open({ baudRate });
+                    this.writer = this.port.writable?.getWriter();
+                    this.connected = true;
+                    return true;
+                } catch (e) {
+                    console.error(`设备 ${String.fromCharCode(64 + this.id)} 连接失败:`, e);
+                    return false;
+                }
+            }
+            async disconnect() {
+                await this.stopReadLoop();
+                if (this.writer) {
+                    try { await this.writer.close(); } catch {}
+                    this.writer = null;
+                }
+                if (this.port?.readable) {
+                    try { await this.port.readable.cancel(); } catch {}
+                }
+                if (this.port) {
+                    try { await this.port.close(); } catch {}
+                }
+                this.connected = false;
+            }
+            async readLoop(onData, onError) {
+                if (!this.port?.readable || !this.connected) return;
+                this.readLoopActive = true;
+                try {
+                    while (this.connected && this.readLoopActive) {
+                        this.reader = this.port.readable.getReader();
+                        const { value, done } = await this.reader.read();
+                        this.reader.releaseLock();
+                        this.reader = null;
+                        if (done) break;
+                        if (onData) onData(new TextDecoder().decode(value));
+                    }
+                } catch (e) {
+                    if (this.readLoopActive && onError) onError(e);
+                } finally {
+                    this.readLoopActive = false;
+                }
+            }
+            async stopReadLoop() {
+                if (this.readLoopActive) {
+                    this.readLoopActive = false;
+                    if (this.reader) {
+                        try { await this.reader.cancel(); } catch {}
+                    }
+                }
+            }
+            
+            async write(data) {
+                 if (!this.writer) return;
+                 const enc = typeof data === 'string' ? new TextEncoder().encode(data) : data;
+                 await this.writer.write(enc);
+            }
+        }
+
+        /**
+         * WiFi 控制器
+         */
+        class WifiController {
+            constructor(app) {
+                this.app = app;
+                this.scannedNetworks = [];
+                this.isScanning = false;
+            }
+            
+            async scan() {
+                const connectedDevices = this.app.devices.filter(d => d.serial.connected);
+                if (connectedDevices.length === 0) {
+                    alert('请至少连接一个设备进行WiFi扫描');
+                    return;
+                }
+                
+                this.app.uiManager.log('开始扫描WiFi (所有设备)...');
+                
+                // 在已连接设备上显示扫描状态
+                connectedDevices.forEach(d => {
+                    this.app.uiManager.updateDeviceMessage(d.id, '正在扫描...', 'info');
+                });
+
+                UI.wifi.list.innerHTML = '<option value="">扫描中...</option>';
+                this.scannedNetworks = [];
+                this.isScanning = true;
+                this.app.uiManager.updateButtons(this.app.devices, true);
+                
+                const ssidRx = /ssid\s*=\s*(.*?)\s+rssi/;
+                const bssidRx = /bssid\s*=\s*([0-9A-Fa-f]+)/;
+
+                // 停止所有之前的读取并开始扫描
+                const scanPromises = connectedDevices.map(async (device) => {
+                    await device.serial.stopReadLoop();
+                    
+                    let buffer = '';
+                    const onData = (text) => {
+                        if (!this.isScanning) return;
+                        buffer += text;
+                        const lines = buffer.split(/[\n]+/);
+                        if (lines.length > 1) {
+                            buffer = lines.pop(); 
+                            for (const l of lines.map(x=>x.trim()).filter(x=>x)) {
+                                const m = l.match(ssidRx); 
+                                const b = l.match(bssidRx); 
+                                if (m && b && !this.scannedNetworks.find(n => n.ssid === m[1].trim())) {
+                                    this.scannedNetworks.push({ ssid: m[1].trim(), bssid: b[1].trim() });
+                                }
+                            }
+                        }
+                        
+                        // 如果找到数据则立即填充
+                        //if (this.scannedNetworks.length > 0) {
+                             //this.updateSelect();
+                        //}
+                    };
+                    
+                    device.serial.readLoop(onData, (e) => console.error(`Device ${device.id} scan error:`, e));
+                    
+                    // 进入工厂模式
+                    await device.serial.write(new Uint8Array(8).fill(0xf8));
+                    await new Promise(resolve => setTimeout(resolve, 50));
+
+                    await device.serial.write('<1,SCN>');
+                });
+                
+                // 设置超时以停止扫描
+                setTimeout(async () => {
+                    this.isScanning = false;
+                    for (const d of connectedDevices) {
+                        await d.serial.stopReadLoop();
+                        
+                        // 退出工厂模式
+                        await d.serial.write(new Uint8Array(8).fill(0xf8));
+                        await new Promise(resolve => setTimeout(resolve, 50));
+
+                        this.app.uiManager.updateDeviceMessage(d.id, '✅ 已连接', 'success'); // 恢复状态
+                    }
+                    this.updateSelect();
+                    this.app.uiManager.updateButtons(this.app.devices, false);
+                    this.app.uiManager.log(`扫描结束，找到 ${this.scannedNetworks.length} 个网络`);
+                }, 3000); // 3秒扫描窗口
+            }
+            
+            updateSelect() {
+                 const currentVal = UI.wifi.list.value;
+                 UI.wifi.list.innerHTML = '';
+                 if (this.scannedNetworks.length === 0) {
+                     UI.wifi.list.innerHTML = '<option value="">未找到WiFi</option>';
+                 } else {
+                     this.scannedNetworks.forEach(n => {
+                         const opt = document.createElement('option');
+                         opt.value = n.ssid; 
+                         opt.textContent = n.ssid;
+                         opt.dataset.bssid = n.bssid;
+                         UI.wifi.list.appendChild(opt);
+                     });
+                     if (currentVal) UI.wifi.list.value = currentVal;
+                 }
+                 this.app.uiManager.updateButtons(this.app.devices, this.isScanning);
+            }
+            
+            async connectAll() {
+                const ssid = UI.wifi.list.value;
+                const pass = UI.wifi.pass.value;
+                const bssid = UI.wifi.list.options[UI.wifi.list.selectedIndex]?.dataset.bssid;
+                
+                if (!ssid || !bssid) {
+                    alert('请先扫描并选择WiFi');
+                    return;
+                }
+                
+                const cmd = `<1,WFI;${ssid};${pass};${bssid};1>`;
+                const connectedDevices = this.app.devices.filter(d => d.serial.connected);
+                 if (connectedDevices.length === 0) {
+                    alert('没有已连接的设备');
+                    return;
+                }
+                
+                this.app.uiManager.log('开始连接WiFi (所有设备)...');
+                
+                connectedDevices.forEach(async (device) => {
+                    this.app.uiManager.updateDeviceMessage(device.id, '正在连接...', 'info');
+                    await device.serial.stopReadLoop();
+                    
+                    // 进入工厂模式
+                    await device.serial.write(new Uint8Array(8).fill(0xf8));
+                    await new Promise(resolve => setTimeout(resolve, 50));
+
+                    let responseReceived = false;
+                    const onData = (text) => {
+                        if (text.trim().length > 0) responseReceived = true;
+                    };
+                    device.serial.readLoop(onData, (e) => {});
+                    
+                    // 发送连接
+                    await device.serial.write(cmd);
+                    
+                    // 等待连接
+                    await new Promise(r => setTimeout(r, CONFIG.TIMEOUTS.WIFI_CONNECT));
+                    
+                    // 发送查询
+                    let wifiStatus = 0; // 0:未知/断开, 1:连接中, 2:已连接
+                    let checkBuffer = '';
+                    await device.serial.stopReadLoop();
+
+                    const onCheckData = (text) => {
+                        checkBuffer += text;
+                        const match = checkBuffer.match(/<1,EVT5;(\d+);/);
+                        if (match) {
+                             wifiStatus = parseInt(match[1], 10);
+                        }
+                    };
+                    device.serial.readLoop(onCheckData, (e) => {});
+
+                    await device.serial.write('<1,EVT5>');
+                    
+                    // 等待查询响应
+                    await new Promise(r => setTimeout(r, CONFIG.TIMEOUTS.WIFI_CHECK));
+                    
+                    await device.serial.stopReadLoop();
+                    
+                    if (wifiStatus === 2) {
+                         this.app.uiManager.updateDeviceMessage(device.id, 'WiFi已连接', 'success');
+                         this.app.uiManager.setWifiReady(true);
+                         this.app.uiManager.updateButtons(this.app.devices);
+                    } else {
+                         const msg = wifiStatus === 1 ? 'WiFi正在连接...' : 'WiFi连接失败';
+                         const type = wifiStatus === 1 ? 'info' : 'error';
+                         this.app.uiManager.updateDeviceMessage(device.id, msg, type);
+                    }
+                    // 退出工厂模式
+                    await device.serial.write(new Uint8Array(8).fill(0xf8));
+                    await new Promise(resolve => setTimeout(resolve, 50));
+                });
+            }
+        }
+
+        /**
+         * 管理所有UI更新
+         */
+        class UIManager {
+            constructor() {
+                this.logMessages = [];
+                this.deviceRows = new Map();
+                this.isWifiReady = false;
+            }
+
+            setWifiReady(ready) {
+                this.isWifiReady = ready;
+            }
+
+            initDeviceRows() {
+                for (let i = 1; i <= CONFIG.DEVICE_COUNT; i++) {
+                    const row = UI.resultBody.insertRow();
+                    row.id = `device-row-${i}`;
+                    // Cols: Device, Time, SN, WIFI, Serial, Web, Result, Report
+                    for (let j = 0; j < 8; j++) row.insertCell();
+                    row.cells[0].textContent = `设备${String.fromCharCode(64 + i)}`;
+                    this.deviceRows.set(i, row);
+                }
+            }
+
+            log(msg) {
+                const timestamp = new Date().toLocaleTimeString();
+                this.logMessages.push(`[${timestamp}] ${msg}`);
+                if (this.logMessages.length > CONFIG.LOG_LIMIT) {
+                    this.logMessages.shift();
+                }
+                UI.logBox.textContent = this.logMessages.join('\n');
+                UI.logBox.scrollTop = UI.logBox.scrollHeight;
+            }
+
+            updateDeviceMessage(id, text, type = 'info') {
+                const el = UI.devicePanels[id - 1].msg;
+                if (!el) return;
+                el.textContent = text;
+                el.style.color = { error: 'red', success: 'green' }[type] || 'black';
+            }
+
+            updateButtons(devices, isScanning = false) {
+                const anyConnected = devices.some(d => d.serial.connected);
+                const ssid = UI.wifi.list.value;
+                const pass = UI.wifi.pass.value;
+
+                UI.wifi.scanBtn.disabled = !anyConnected || isScanning;
+                UI.wifi.connectBtn.disabled = !anyConnected || !ssid || isScanning; // || pass.length < 8 
+
+                devices.forEach((device, i) => {
+                    const panel = UI.devicePanels[i];
+                    const isConnected = device.serial.connected;
+
+                    panel.connectBtn.textContent = isConnected ? '断开' : '连接';
+                    panel.connectBtn.disabled = !device.serial.connected && !device.serial.port;
+                    panel.selectBtn.disabled = device.inProgress;
+                    
+                    panel.snInput.disabled = !isConnected || device.inProgress || !this.isWifiReady;
+                    if (isConnected) {
+                        panel.snInput.placeholder = '请使用扫码枪扫描...';
+                    } else {
+                        panel.snInput.placeholder = '请连接设备...';
+                    }
+                });
+            }
+
+            addOrUpdateTestResult(record) {
+                const row = this.deviceRows.get(record.deviceId);
+                if (!row) return;
+
+                if (record.errorReason === 'SN不匹配') {
+                    row.cells[1].textContent = record.timestamp;
+                    row.cells[2].textContent = record.sn || '未知';
+                    row.cells[2].className = 'fail';
+                    for(let i=3; i<8; i++) { row.cells[i].textContent = '-'; row.cells[i].className = ''; }
+                    row.cells[6].textContent = 'SN不匹配';
+                    row.cells[6].className = 'fail';
+                    return;
+                }
+
+                const getStatusDisplay = (val) => {
+                    if (val === true) return { text: '正常', className: 'pass' };
+                    if (val === false) return { text: '异常', className: 'fail' };
+                    return { text: '待测试', className: '' };
+                };
+                
+                const getWifiDisplay = (val) => {
+                    if (val === true) return { text: '正常', className: 'pass' };
+                    if (val === false) return { text: '异常', className: 'fail' };
+                    return { text: '待测试', className: '' };
+                }
+
+                const getInfoCell = (value, failText = '异常') => ({
+                    text: value || failText,
+                    className: value ? 'pass' : 'fail'
+                });
+
+                const getReportStatusCell = (record) => {
+                    if (record.skipReport) {
+                        return { text: '未上报', className: 'fail' };
+                    }
+                    if (record.reported) {
+                        return { text: '已上报', className: 'pass' };
+                    }
+                    if (record.reportFailed) {
+                        return { text: '未上报', className: 'fail' };
+                    }
+                    if (record.status !== 'pending' && !CONFIG.AUTO_REPORT) {
+                        return { text: '未上报', className: record.status === false ? 'fail' : '' };
+                    }
+                    if (record.status === false && !record.sn) {
+                        return { text: '未上报', className: 'fail' };
+                    }
+                    return { text: '待上报', className: 'testing' };
+                };
+
+                // Cols: Device, Time, SN, WIFI, Serial, Web, Result, Report
+                const columns = [
+                    { text: `设备${String.fromCharCode(64 + record.deviceId)}` },
+                    { text: record.timestamp },
+                    getInfoCell(record.sn),
+                    getWifiDisplay(record.wifi),
+                    getStatusDisplay(record.serial),
+                    getStatusDisplay(record.web),
+                    record.status === 'pending' ? { text: '正在测试...', className: 'testing' } : getStatusDisplay(record.status),
+                    getReportStatusCell(record)
+                ];
+
+                columns.forEach((col, i) => {
+                    row.cells[i].textContent = col.text ?? '';
+                    row.cells[i].className = col.className ?? '';
+                });
+            }
+
+            clearTestResult(deviceId) {
+                const row = this.deviceRows.get(deviceId);
+                if (row) {
+                    for (let i = 1; i < row.cells.length; i++) {
+                        row.cells[i].textContent = '';
+                        row.cells[i].className = '';
+                    }
+                }
+            }
+
+            showTestResult(deviceId, state, message = null) {
+                const display = UI.testResultDisplays[deviceId - 1];
+                if (!display) return;
+
+                const states = {
+                    waiting: { text: `⏳ 设备${String.fromCharCode(64 + deviceId)}测试中...`, className: 'waiting' },
+                    pass: { text: `✅ 设备${String.fromCharCode(64 + deviceId)}-通过`, className: 'pass' },
+                    fail: { text: `❌ 设备${String.fromCharCode(64 + deviceId)}-不通过`, className: 'fail' },
+                    'no-device': { text: `❌ 设备${String.fromCharCode(64 + deviceId)}-未插入`, className: 'fail' },
+                    connected: { text: `端口${String.fromCharCode(64 + deviceId)}已连接`, className: 'default' },
+                    disconnected: { text: `端口${String.fromCharCode(64 + deviceId)}未连接`, className: 'default' }
+                };
+
+                const { text, className } = states[state] || states.disconnected;
+                display.textContent = message || text;
+                display.className = `test-result-display ${className}`;
+            }
+        }
+
+        /**
+         * 核心应用逻辑
+         */
+        class App {
+            constructor(uiManager) {
+                this.uiManager = uiManager;
+                this.devices = Array.from({ length: CONFIG.DEVICE_COUNT }, (_, i) => ({
+                    id: i + 1,
+                    serial: new SerialManager(i + 1),
+                    inProgress: false,
+                    record: null
+                }));
+                this.wifiController = new WifiController(this);
+                this.testRunner = new TestRunner(this.uiManager);
+            }
+
+            async init() {
+                try {
+                    await DgwCrypto.init();
+                } catch (e) {
+                    alert('URL加密模块初始化失败，测试功能已禁用。');
+                    this.uiManager.log('❌ URL加密模块初始化失败!');
+                    return;
+                }
+                this.uiManager.initDeviceRows();
+                this.setupEventListeners();
+                await this.loadSavedPorts();
+                this.uiManager.updateButtons(this.devices);
+                this.uiManager.log('应用程序已初始化，请连接串口并开始测试。');
+            }
+
+            setupEventListeners() {
+                this.devices.forEach((device) => {
+                    const panel = UI.devicePanels[device.id - 1];
+                    panel.selectBtn.addEventListener('click', () => this.selectPort(device.id));
+                    panel.connectBtn.addEventListener('click', () => this.toggleConnection(device.id));
+                    panel.snInput.addEventListener('keydown', (event) => {
+                        if (event.key === 'Enter') {
+                            event.preventDefault(); 
+                            this.startTestFromInput(device.id);
+                        }
+                    });
+                });
+                
+                UI.wifi.scanBtn.addEventListener('click', () => this.wifiController.scan());
+                UI.wifi.connectBtn.addEventListener('click', () => this.wifiController.connectAll());
+                UI.wifi.list.addEventListener('change', () => this.uiManager.updateButtons(this.devices, this.wifiController.isScanning));
+                UI.wifi.pass.addEventListener('input', () => this.uiManager.updateButtons(this.devices, this.wifiController.isScanning));
+
+                document.getElementById('switchInterfaceBtn').addEventListener('click', () => window.location.href = `wifi_tool.html?v=${Date.now()}`);
+                document.getElementById('switchVerisonBtn').addEventListener('click', () => window.location.href = `complete_machine.html?v=${Date.now()}`);
+            }
+
+            async startTestFromInput(id) {
+                const device = this.devices[id - 1];
+                
+                if (device.inProgress) {
+                    this.uiManager.log(`设备 ${id} 正在测试中，请勿重复操作。`);
+                    return;
+                }
+                if (!device.serial.connected) {
+                    this.uiManager.updateDeviceMessage(id, '❌ 串口未连接', 'error');
+                    return;
+                }
+
+                const panel = UI.devicePanels[id - 1];
+                const enteredSn = panel.snInput.value.trim();
+
+                if (enteredSn.length !== 20) {
+                    this.uiManager.updateDeviceMessage(device.id, '❌ SN错误', 'error');
+                    return;
+                }else{this.uiManager.updateDeviceMessage(device.id, '✅ 已连接', 'success');}
+
+                this.testRunner.startTest(device, this, enteredSn);
+            }
+
+            async loadSavedPorts() {
+                const allPorts = await navigator.serial.getPorts();
+                for (const device of this.devices) {
+                    try {
+                        const savedIndex = localStorage.getItem(`serialPort_device_${device.id}`);
+                        if (savedIndex !== null) {
+                            const port = allPorts[parseInt(savedIndex, 10)];
+                            if (port) {
+                                device.serial.port = port;
+                                this.uiManager.updateDeviceMessage(device.id, '✅ 串口已加载');
+                            }
+                        }
+                    } catch (e) {
+                        console.error('加载已保存的端口失败:', e);
+                    }
+                }
+            }
+
+            async selectPort(id) {
+                const device = this.devices[id - 1];
+                if (await device.serial.select()) {
+                    this.uiManager.updateDeviceMessage(id, '✅ 串口已选择', 'success');
+                    try {
+                        const allPorts = await navigator.serial.getPorts();
+                        const portIndex = allPorts.indexOf(device.serial.port);
+                        if (portIndex > -1) {
+                            localStorage.setItem(`serialPort_device_${id}`, portIndex);
+                            this.uiManager.log(`💾 已为设备 ${id} 保存串口选择`);
+                        }
+                    } catch (e) {
+                        console.error('保存端口选择失败:', e);
+                    }
+                }
+                this.uiManager.updateButtons(this.devices);
+            }
+
+            async toggleConnection(id) {
+                const device = this.devices[id - 1];
+                if (device.serial.connected) {
+                    const isFinishedFailure = !device.inProgress && device.record?.status === false;
+                    await this.disconnectDevice(device, isFinishedFailure);
+                } else {
+                    await this.connectDevice(device);
+                }
+                this.uiManager.updateButtons(this.devices);
+            }
+
+            async connectDevice(device) {
+                this.uiManager.updateDeviceMessage(device.id, '⌛ 连接中...');
+                if (await device.serial.connect(CONFIG.BAUD_RATE)) {
+                    this.uiManager.updateDeviceMessage(device.id, '✅ 已连接', 'success');
+                    this.uiManager.showTestResult(device.id, 'connected');
+                } else {
+                    this.uiManager.updateDeviceMessage(device.id, '❌ 连接失败', 'error');
+                }
+            }
+
+            async disconnectDevice(device, keepResultOnDisplay = false) {
+                if (device.inProgress) {
+                    this.testRunner.cancelTest(device);
+                    this.uiManager.log(`🛑 设备 ${device.id}: 用户手动断开，测试已中断`);
+                }
+                await device.serial.disconnect();
+                this.uiManager.updateDeviceMessage(device.id, 'ℹ️ 已断开');
+                UI.devicePanels[device.id - 1].snInput.value = '';
+                if (!keepResultOnDisplay) { 
+                     device.record = null;
+                     this.uiManager.showTestResult(device.id, 'disconnected');
+                     this.uiManager.clearTestResult(device.id);
+                }
+            }
+        }
+
+        /**
+         * 测试流程控制器
+         */
+        class TestRunner {
+            constructor(uiManager) {
+                this.uiManager = uiManager;
+                this.testTimeouts = new Map();
+            }
+
+            cancelTest(device) {
+                this.clearTimeouts(device.id);
+                device.inProgress = false;
+                if (device.record) this.uiManager.clearTestResult(device.id);
+                device.record = null;
+                this.uiManager.log(`⏹️ 设备 ${device.id}: 测试已取消`);
+            }
+
+            async startTest(device, app, enteredSn) {
+                if (device.inProgress) return;
+
+                const ssid = UI.wifi.list.value;
+                const bssid = UI.wifi.list.options[UI.wifi.list.selectedIndex]?.dataset.bssid;
+                const pass = UI.wifi.pass.value;
+                
+                if (!ssid || !bssid) {
+                    this.uiManager.log(`❌ 设备 ${device.id}: 无法开始测试，未配置WiFi (请先扫描并选择)`);
+                    this.uiManager.showTestResult(device.id, 'fail', 'WiFi未配置');
+                    return;
+                }
+
+                this.uiManager.clearTestResult(device.id);
+                device.record = null;
+                device.inProgress = true;
+                device.enteredSn = enteredSn;
+                app.uiManager.updateButtons(app.devices);
+                
+                this.uiManager.showTestResult(device.id, 'waiting');
+
+                // 流程: SN -> 串口通信 -> WIFI -> 网页访问
+                const timeoutId = setTimeout(() => {
+                    if (!device.inProgress) return;
+                    this.stepSerialInfo(device, app);
+                }, CONFIG.TIMEOUTS.COMMAND);
+                this.testTimeouts.set(`start_${device.id}`, timeoutId);
+            }
+
+            async stepSerialInfo(device, app) {
+                this.uiManager.log(`设备 ${device.id}: 获取设备信息...`);
+                
+                let buffer = '';
+                let infoReceived = false;
+                
+                const onData = async (textData) => {
+                    if (infoReceived) return;
+                    buffer += textData;
+                    if (buffer.includes('<1,DSN;')) {
+                        infoReceived = true;
+                        await device.serial.stopReadLoop();
+                        this.handleSerialResponse(device, buffer, app);
+                    }
+                };
+                
+                device.serial.readLoop(onData, (e) => {
+                     this.uiManager.log(`❌ 设备 ${device.id} 串口读取异常: ${e.message}`);
+                });
+                
+                // 发送 <1,DSN>
+                for (let i = 0; i < CONFIG.RETRY_COUNT + 1; i++) {
+                    if (infoReceived) break;
+                    const isRetry = i > 0;
+                    if (isRetry) this.uiManager.log(`设备 ${device.id}: 获取信息重试...`);
+                    
+                    if (!isRetry) {
+                        await device.serial.write(new Uint8Array(8).fill(0xf8));
+                        await new Promise(resolve => setTimeout(resolve, 50));
+                    }
+                    await device.serial.write('<1,DSN>');
+                    
+                    await new Promise(resolve => {
+                         const tid = setTimeout(() => { resolve(); }, CONFIG.TIMEOUTS.RESPONSE);
+                         this.testTimeouts.set(`info_${device.id}`, tid);
+                    });
+                }
+                
+                if (!infoReceived && device.inProgress) {
+                    this.uiManager.log(`❌ 设备 ${device.id}: 获取设备信息超时`);
+                    await device.serial.stopReadLoop();
+                    this.finishTest(device, { sn: null, serial: false, wifi: false, web: false, status: false }, app);
+                }
+            }
+
+            async handleSerialResponse(device, buffer, app) {
+                const sn = buffer.match(/<1,DSN;([^>]+)>/)?.[1]?.trim() || null;
+
+                if (sn !== device.enteredSn) {
+                    this.uiManager.log(`❌ 设备 ${device.id}: SN不匹配。输入: ${device.enteredSn}, 设备返回: ${sn}`);
+                    this.finishTest(device, { sn: sn, serial: true, status: false, errorReason: 'SN不匹配', skipReport: true }, app);
+                    return;
+                }
+
+                if (!sn) {
+                    this.uiManager.log(`❌ 设备 ${device.id}: 响应格式不正确或SN为空`);
+                    this.finishTest(device, { sn: null, serial: true, status: false, skipReport: true }, app);
+                    return;
+                }
+
+                this.uiManager.log(`✅ 设备 ${device.id}: 收到SN: ${sn}`);
+                
+                device.record = { 
+                    deviceId: device.id, 
+                    timestamp: new Date().toLocaleString(), 
+                    sn: sn, 
+                    wifi: 'pending',
+                    serial: 'pending', 
+                    web: 'pending', 
+                    status: 'pending' 
+                };
+                this.uiManager.addOrUpdateTestResult(device.record);
+                
+                const ssid = UI.wifi.list.value;
+                const bssid = UI.wifi.list.options[UI.wifi.list.selectedIndex]?.dataset.bssid;
+                const pass = UI.wifi.pass.value;
+                await this.stepWifiConnect(device, app, ssid, pass, bssid);
+            }
+
+             async stepWifiConnect(device, app, ssid, pass, bssid) {
+                this.uiManager.log(`设备 ${device.id}: 发送配网指令...`);
+                // 连接指令格式 <1,WFI;ssid;password;bssid;1>
+                const wifiCmd = `<1,WFI;${ssid};${pass};${bssid};1>`;
+                
+                await device.serial.write(wifiCmd);
+                
+                // 等待WiFi连接
+                await new Promise(r => setTimeout(r, CONFIG.TIMEOUTS.WIFI_CONNECT));
+                
+                // 发送查询指令 <1,> 判断连接
+                await this.stepWifiCheck(device, app);
+            }
+            
+            async stepWifiCheck(device, app) {
+                this.uiManager.log(`设备 ${device.id}: 检查WiFi状态...`);
+                
+                // 预留查询指令 <1,>
+                let responseReceived = false;
+                
+                // 清理旧的buffer
+                await device.serial.stopReadLoop();
+                
+                const onData = (text) => {
+                    // 只要收到数据，且不是明确的错误，就认为OK (根据用户要求: 默认都先用<1,>来发送判断)
+                    // 可以根据后续填充的内容完善判断
+                    if (text.trim().length > 0) {
+                        responseReceived = true;
+                    }
+                };
+                
+                device.serial.readLoop(onData, (e) => {});
+                await device.serial.write('<1,>');
+                
+                await new Promise(resolve => setTimeout(resolve, CONFIG.TIMEOUTS.WIFI_CHECK));
+                await device.serial.stopReadLoop();
+                
+                if (responseReceived) {
+                    this.uiManager.log(`✅ 设备 ${device.id}: WiFi连接确认 (查询响应OK)`);
+                    device.record.wifi = true;
+                    device.record.serial = true;
+                    this.uiManager.addOrUpdateTestResult(device.record);
+                    await this.startWebTest(device, app);
+                } else {
+                    this.uiManager.log(`❌ 设备 ${device.id}: WiFi连接检查超时 (无响应)`);
+                    device.record.wifi = false;
+                    this.finishTest(device, { status: false, errorReason: 'WiFi连接失败', serial: true }, app);
+                }
+            }
+
+            async startWebTest(device, app) {
+                this.uiManager.log(`🔗 设备 ${device.id}: 正在测试网络连接...`);
+                const testUrl = await this._generateTestUrl(device.record.sn);
+                let webResult = false;
+                
+                if (testUrl) {
+                    this.uiManager.log(`🌐 设备 ${device.id}: 测试网址: ${testUrl}`);
+                    for (let attempt = 0; attempt < CONFIG.RETRY_COUNT + 1; attempt++) {
+                        try {
+                            const proxiedUrl = `https://cors.lorens.qzz.io/?url=${encodeURIComponent(testUrl)}`;
+                            const response = await fetch(proxiedUrl, { signal: AbortSignal.timeout(CONFIG.TIMEOUTS.FETCH), mode: 'cors', cache: 'no-cache' });
+                            if (response.ok) {
+                                this.uiManager.log(`✅ 设备 ${device.id}: 网络访问成功`);
+                                webResult = true;
+                                break;
+                            }
+                            throw new Error(`HTTP状态 ${response.status}`);
+                        } catch (e) {
+                            this.uiManager.log(`❌ 设备 ${device.id}: 网络访问失败: ${e.message}`);
+                            if (attempt < CONFIG.RETRY_COUNT) await new Promise(resolve => setTimeout(resolve, 1000));
+                        }
+                    }
+                }
+                
+                this.finishTest(device, { web: webResult, status: webResult }, app);
+            }
+
+            async finishTest(device, result, app) {
+                device.inProgress = false;
+                
+                const baseRecord = {
+                    deviceId: device.id,
+                    timestamp: new Date().toLocaleString(),
+                    sn: null,
+                    wifi: false,
+                    serial: false,
+                    web: false,
+                    status: false
+                };
+                device.record = { ...baseRecord, ...device.record, ...result };
+
+                const isSuccess = device.record.status === true;
+                this.uiManager.addOrUpdateTestResult(device.record);
+
+                // 判断是否没获取到关键参数 (WiFi版只有SN)
+                const noDeviceDetected = !device.record.sn;
+                let displayState;
+                if (isSuccess) {
+                    displayState = 'pass';
+                } else if (noDeviceDetected) {
+                    displayState = 'no-device';
+                } else {
+                    displayState = 'fail';
+                }
+
+                this.uiManager.showTestResult(device.id, displayState, result.errorReason);
+                this.uiManager.updateButtons(app.devices);
+                this.uiManager.log(`📊 设备 ${device.id}: 测试完成 - ${isSuccess ? '通过' : '失败'}`);
+
+                if (CONFIG.AUTO_REPORT && !device.record.skipReport) {
+                    await this.reportResult(device.record);
+                }
+
+                // 结束清理，发送结束符
+                try {
+                    await device.serial.write(new Uint8Array(8).fill(0xf8));
+                } catch (e) {}
+
+                UI.devicePanels[device.id - 1].snInput.value = '';
+            }
+
+            async reportResult(record) {
+                if (!record.sn) return;
+
+                this.uiManager.log(`📮 设备 ${record.sn}: 正在上报测试结果...`);
+                try {
+                    const reportData = { 
+                        deviceId: 'DGS-100', 
+                        results: [{ 
+                            sn: record.sn, 
+                            wifiTest: record.wifi === true ? 'pass' : 'fail', // 新增 WiFi 状态上报
+                            serialTest: record.serial === true ? 'pass' : 'fail', 
+                            webTest: record.web === true ? 'pass' : 'fail', 
+                            overallStatus: record.status === true ? 'pass' : 'fail' 
+                        }] 
+                    }; 
+                    const response = await fetch(CONFIG.URLS.REPORT, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', 'User-Agent': 'DGS-100-Tester/1.0' },
+                        body: JSON.stringify(reportData),
+                        signal: AbortSignal.timeout(CONFIG.TIMEOUTS.REPORT)
+                    });
+                    if (response.ok) {
+                        this.uiManager.log(`✅ 设备 ${record.sn}: 上报成功`);
+                        record.reported = true;
+                    } else {
+                        throw new Error(`服务器响应 ${response.status}`);
+                    }
+                } catch (error) {
+                    this.uiManager.log(`❌ 设备 ${record.sn}: 结果上报失败: ${error.message}`);
+                    record.reportFailed = true;
+                }
+                this.uiManager.addOrUpdateTestResult(record);
+            }
+
+            async _generateTestUrl(sn) {
+                const encrypted = await DgwCrypto.encrypt("DAAN" + sn);
+                return encrypted ? `${CONFIG.URLS.TEST}${encrypted}` : null;
+            }
+
+            clearTimeouts(deviceId) {
+                if (this.testTimeouts.has(`info_${deviceId}`)) {
+                    clearTimeout(this.testTimeouts.get(`info_${deviceId}`));
+                    this.testTimeouts.delete(`info_${deviceId}`);
+                }
+            }
+        }
+
+        // --- 应用启动 ---
+        if ('serial' in navigator) {
+            const uiManager = new UIManager();
+            const app = new App(uiManager);
+            app.init();
+        } else {
+            alert('错误：您的浏览器不支持 Web Serial API。');
+        }
+
+    })();
+</script>
+</body>
+</html>
