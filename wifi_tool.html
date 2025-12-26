@@ -213,13 +213,13 @@ class SerialManager {
         if (this.port) { try { await this.port.close(); } catch {} }
         this.connected = false; this.buffer = '';
     }
-    async write(data, chunkDelay = 0) {
+    async write(data, chunkDelay = 0, chunkSize = 1) {
         if (!this.writer) return false;
         try {
             const enc = typeof data === 'string' ? encoder.encode(data) : data;
             if (chunkDelay > 0) {
-                for (let i = 0; i < enc.length; i += 16) {
-                    await this.writer.write(enc.slice(i, i + 16));
+                for (let i = 0; i < enc.length; i += chunkSize) {
+                    await this.writer.write(enc.slice(i, i + chunkSize));
                     await new Promise(r => setTimeout(r, chunkDelay));
                 }
             } else await this.writer.write(enc);
@@ -449,7 +449,7 @@ const WifiController = {
              }
         }, e => UIManager.log(`WiFi Connect Error: ${e}`));
         
-        await sm.write(cmd, 50);
+        await sm.write(cmd, 10);
     }
 };
 
@@ -647,14 +647,14 @@ const TestRunner = {
         UIManager.log(`📤 发送 WiFi验证...`);
         
         this.setStepTimeout('WAITING_FOR_WIFI', () => this.retryOrFail('WAITING_FOR_WIFI', sn, app, 
-            () => app.serial.test.write(cmd, 50), async () => {
+            () => app.serial.test.write(cmd, 10), async () => {
                 RecordManager.createOrUpdate({ sn, wifi: false });
                 app.state.test.hasFailure = true;
                 app.state.test.failureItems.push('WiFi连接');
                 this.skipRemainingTests(sn, app);
             }), 10000, app);
             
-        await app.serial.test.write(cmd, 50);
+        await app.serial.test.write(cmd, 10);
     },
     async handleWifiResponse(buf, sn, app) {
         UIManager.log(`🔍 发送连接信息 ${buf.trim()}`); 
