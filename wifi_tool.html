@@ -449,7 +449,7 @@ const WifiController = {
              }
         }, e => UIManager.log(`WiFi Connect Error: ${e}`));
         
-        await sm.write(cmd, 10);
+        await sm.write(cmd, 2);
     }
 };
 
@@ -575,7 +575,7 @@ const TestRunner = {
         await this.startReadLoop(sn, app);
         app.serial.test.buffer = '';
         
-        if(await app.serial.test.write(`ccmd DSN;${sn}\r\n`)) UIManager.log(`📤 已发送 DSN`);
+        if(await app.serial.test.write(`ccmd DSN;${sn}\r\n`, 10)) UIManager.log(`📤 已发送 DSN`);
         else this.finishTest({ sn, serial: false }, app);
     },
     async startReadLoop(sn, app) {
@@ -644,7 +644,7 @@ const TestRunner = {
         const bssid = ui.wifiList.options[ui.wifiList.selectedIndex]?.dataset.bssid || '';
         
         const cmd = `ccmd WFI;${ssid};${pass};${bssid};1\r\n`;
-        UIManager.log(`📤 发送 WiFi验证...`);
+        UIManager.log(`📤 发送 ${cmd}`);
         
         this.setStepTimeout('WAITING_FOR_WIFI', () => this.retryOrFail('WAITING_FOR_WIFI', sn, app, 
             () => app.serial.test.write(cmd, 10), async () => {
@@ -657,7 +657,7 @@ const TestRunner = {
         await app.serial.test.write(cmd, 10);
     },
     async handleWifiResponse(buf, sn, app) {
-        UIManager.log(`🔍 发送连接信息 ${buf.trim()}`); 
+        //UIManager.log(`🔍 发送连接信息 ${buf.trim()}`); 
         const ssid = ui.wifiList.value;
         const pass = ui.wifiPass.value;
         const bssid = ui.wifiList.options[ui.wifiList.selectedIndex]?.dataset.bssid || '';
@@ -714,14 +714,14 @@ const TestRunner = {
         }
         UIManager.log('✅ TCS已开启');
 
-        await app.serial.test.write('ccmd LED;2;0\r\n');
+        await app.serial.test.write('ccmd LED;2;0\r\n', 10);
         app.state.test.currentStep = 'LED_TESTS';
         const getR = () => this.getAvg(() => parseFloat(app.state.device.status?.color_r) || app.state.device.colorR || 0);
         
         for (const t of LED_TESTS) {
             let p = false, r = 0, retries = 0;
             do {
-                await app.serial.test.write(t.c);
+                await app.serial.test.write(t.c, 10);
                 await new Promise(res => setTimeout(res, 500));
                 r = await getR();
                 p = (r / t.d) > t.th;
