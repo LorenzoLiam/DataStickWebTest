@@ -200,6 +200,19 @@ class SerialManager {
         this.connected = false;
         this.buffer = '';
     }
+    async write(data, chunkDelay = 0, chunkSize = 1) {
+        if (!this.writer) return false;
+        try {
+            const enc = typeof data === 'string' ? encoder.encode(data) : data;
+            if (chunkDelay > 0) {
+                for (let i = 0; i < enc.length; i += chunkSize) {
+                    await this.writer.write(enc.slice(i, i + chunkSize));
+                    await new Promise(r => setTimeout(r, chunkDelay));
+                }
+            } else await this.writer.write(enc);
+            return true;
+        } catch (e) { console.error('Write error:', e); return false; }
+    }
     async readLoop(onData, onError) {
         if (!this.port?.readable || !this.connected) return;
         this.readLoopActive = true;
@@ -422,7 +435,7 @@ const app = {
         UIManager.update('statusMsg', '正在校准请稍后...', 'info');
         for (let i = 0; i < 3; i++) {
             try {
-                if(this.serial.status.writer) await this.serial.status.writer.write(encoder.encode('AT+CAL\r\n'));
+                await this.serial.status.write('AT+CAL\r\n');
                 await new Promise(r => setTimeout(r, 50));
                 const s = this.state.device.status;
                 if (s) {
@@ -448,8 +461,7 @@ const TestRunner = {
     hwKeys: ['vout', 'iout', 'ai0', 'ai1', 'ai2', 'powerLight', 'rs485Light', 'networkLight'],
     async sendCmd(app, cmd) {
         try {
-            if(app.serial.test.writer) await app.serial.test.writer.write(encoder.encode(cmd));
-            return true;
+            return await app.serial.test.write(cmd, 2);
         } catch (e) {
             UIManager.log(`❌ 发送失败: ${cmd.trim()} - ${e.message}`);
             return false;
